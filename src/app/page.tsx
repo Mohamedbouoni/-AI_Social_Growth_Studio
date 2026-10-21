@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { PlanCards } from "@/components/billing/plan-cards";
 import {
   Sparkles,
   ArrowRight,
@@ -22,16 +24,17 @@ import { Card, CardContent } from "@/components/ui/card";
 
 export default function LandingPage() {
   const { t, language, toggleLanguage, dir } = useLanguage();
+  const router = useRouter();
   const [activeDemoPlatform, setActiveDemoPlatform] = useState<
     "youtube" | "tiktok" | "instagram"
   >("youtube");
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-violet-500/30 selection:text-violet-200">
+    <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-sage-soft selection:text-foreground">
       {/* Top Navbar */}
       <header className="h-16 border-b border-border/70 sticky top-0 z-50 bg-background/80 backdrop-blur-md px-4 sm:px-8 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="size-8 rounded-xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-pink-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+          <div className="size-8 rounded-xl bg-primary flex items-center justify-center text-primary-foreground">
             <Sparkles className="size-4" />
           </div>
           <span className="font-extrabold text-base tracking-tight">
@@ -71,7 +74,7 @@ export default function LandingPage() {
           <Link href="/register">
             <Button
               size="sm"
-              className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-90 text-white font-semibold text-xs shadow-sm shadow-indigo-500/20 cursor-pointer"
+              className="bg-primary hover:opacity-90 text-primary-foreground font-semibold text-xs cursor-pointer"
             >
               {t.nav.getStarted}
             </Button>
@@ -82,11 +85,11 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="relative overflow-hidden pt-20 pb-28 px-4 sm:px-6 lg:px-8 text-center max-w-5xl mx-auto space-y-8">
         {/* Glow background */}
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 size-96 rounded-full bg-violet-600/15 blur-3xl pointer-events-none" />
-        <div className="absolute top-24 left-1/3 size-72 rounded-full bg-pink-600/10 blur-3xl pointer-events-none" />
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 size-96 rounded-full bg-sage/15 blur-3xl pointer-events-none" />
+        <div className="absolute top-24 left-1/3 size-72 rounded-full bg-sage-soft/40 blur-3xl pointer-events-none" />
 
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-muted/80 border border-border text-foreground shadow-sm">
-          <Sparkles className="size-3.5 text-violet-500" />
+          <Sparkles className="size-3.5 text-sage" />
           <span>YouTube · TikTok · Instagram Multi-Platform SaaS</span>
         </div>
 
@@ -94,14 +97,14 @@ export default function LandingPage() {
           {language === "ar" ? (
             <>
               حوّل فكرتك إلى محتوى فيروسي <br />
-              <span className="bg-gradient-to-r from-violet-500 via-indigo-500 to-pink-500 bg-clip-text text-transparent">
+              <span className="text-sage">
                 مخصص لكل خوارزمية تواصل
               </span>
             </>
           ) : (
             <>
               One core idea. Three platforms. <br />
-              <span className="bg-gradient-to-r from-violet-500 via-indigo-500 to-pink-500 bg-clip-text text-transparent">
+              <span className="text-sage">
                 Engineered for maximum reach.
               </span>
             </>
@@ -118,7 +121,7 @@ export default function LandingPage() {
           <Link href="/register">
             <Button
               size="lg"
-              className="w-full sm:w-auto px-8 py-6 text-sm font-bold bg-gradient-to-r from-violet-600 via-indigo-600 to-pink-500 hover:opacity-95 text-white shadow-xl shadow-indigo-500/25 cursor-pointer"
+              className="w-full sm:w-auto px-8 py-6 text-sm font-bold bg-primary hover:opacity-95 text-primary-foreground cursor-pointer"
             >
               <span>Start Free (10 Credits / mo)</span>
               <ArrowRight className="size-4 ml-2 rtl:rotate-180" />
@@ -211,7 +214,7 @@ export default function LandingPage() {
               </div>
 
               <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
-                <span className="text-[10px] font-bold uppercase text-violet-500 tracking-wider">
+                <span className="text-[10px] font-bold uppercase text-sage tracking-wider">
                   10-Second Retention Hook
                 </span>
                 <p className="text-xs font-medium mt-1 leading-relaxed">
@@ -224,7 +227,7 @@ export default function LandingPage() {
           {activeDemoPlatform === "tiktok" && (
             <div className="space-y-4">
               <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
-                <span className="text-[10px] font-bold uppercase text-pink-500 tracking-wider">
+                <span className="text-[10px] font-bold uppercase text-sage tracking-wider">
                   2-Second Pattern Disruptor
                 </span>
                 <p className="text-sm font-bold mt-1">
@@ -246,7 +249,7 @@ export default function LandingPage() {
           {activeDemoPlatform === "instagram" && (
             <div className="space-y-4">
               <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
-                <span className="text-[10px] font-bold uppercase text-indigo-500 tracking-wider">
+                <span className="text-[10px] font-bold uppercase text-sage tracking-wider">
                   5-Slide Carousel Playbook
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-2">
@@ -283,7 +286,7 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="border-border bg-card">
             <CardContent className="p-6 space-y-3">
-              <div className="size-10 rounded-xl bg-violet-500/10 text-violet-500 flex items-center justify-center">
+              <div className="size-10 rounded-xl bg-sage-softer text-sage flex items-center justify-center">
                 <Sparkles className="size-5" />
               </div>
               <h3 className="text-base font-bold">Platform-Specific Schemas</h3>
@@ -295,7 +298,7 @@ export default function LandingPage() {
 
           <Card className="border-border bg-card">
             <CardContent className="p-6 space-y-3">
-              <div className="size-10 rounded-xl bg-pink-500/10 text-pink-500 flex items-center justify-center">
+              <div className="size-10 rounded-xl bg-sage-softer text-sage flex items-center justify-center">
                 <Layers className="size-5" />
               </div>
               <h3 className="text-base font-bold">1-Click Repurposing</h3>
@@ -307,7 +310,7 @@ export default function LandingPage() {
 
           <Card className="border-border bg-card">
             <CardContent className="p-6 space-y-3">
-              <div className="size-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+              <div className="size-10 rounded-xl bg-sage-softer text-sage flex items-center justify-center">
                 <TrendingUp className="size-5" />
               </div>
               <h3 className="text-base font-bold">Growth Coach Insights</h3>
@@ -319,93 +322,29 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing Section */}
+      {/* Pricing Section — TND plans, paid locally through Konnect */}
       <section id="pricing" className="py-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full space-y-8">
         <div className="text-center space-y-2">
-          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Transparent, Creator-First Pricing
-          </h2>
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Start free, upgrade as your channels grow. Cancel anytime.
-          </p>
+          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{t.app.landingPricingTitle}</h2>
+          <p className="mx-auto max-w-2xl text-sm text-muted-foreground">{t.app.landingPricingBody}</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Free */}
-          <Card className="border-border bg-card">
-            <CardContent className="p-6 space-y-4">
-              <div>
-                <h3 className="text-base font-bold">Free Creator</h3>
-                <div className="text-3xl font-extrabold mt-1">€0</div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Ideal for testing your initial ideas and feeling the speed
-              </p>
-              <ul className="text-xs space-y-2 text-foreground pt-2 border-t">
-                <li>✓ 10 credits / month</li>
-                <li>✓ YouTube, TikTok, Instagram</li>
-                <li>✓ English & Arabic native</li>
-              </ul>
-              <Link href="/register" className="w-full">
-                <Button variant="outline" className="w-full text-xs cursor-pointer">
-                  Get Started Free
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+        <PlanCards onChoose={(plan) => router.push(`/register?plan=${plan}`)} />
 
-          {/* Creator */}
-          <Card className="border-violet-500/50 bg-gradient-to-b from-violet-500/10 to-transparent shadow-lg relative">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-              <Badge className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-[10px] uppercase">
-                Most Popular
-              </Badge>
-            </div>
-            <CardContent className="p-6 space-y-4">
-              <div>
-                <h3 className="text-base font-bold">Creator</h3>
-                <div className="text-3xl font-extrabold mt-1">€9 <span className="text-xs text-muted-foreground font-normal">/mo</span></div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                For active creators posting 3-5 times a week
-              </p>
-              <ul className="text-xs space-y-2 text-foreground pt-2 border-t">
-                <li>✓ 100 credits / month</li>
-                <li>✓ Unlimited saved drafts</li>
-                <li>✓ High-CTR YouTube titles</li>
-                <li>✓ 5-10 slide carousels</li>
-              </ul>
-              <Link href="/register" className="w-full">
-                <Button className="w-full text-xs font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-90 text-white cursor-pointer shadow-md">
-                  Upgrade to Creator
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-
-          {/* Growth */}
-          <Card className="border-border bg-card">
-            <CardContent className="p-6 space-y-4">
-              <div>
-                <h3 className="text-base font-bold">Growth</h3>
-                <div className="text-3xl font-extrabold mt-1">€19 <span className="text-xs text-muted-foreground font-normal">/mo</span></div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                For channels scaling aggressive daily output
-              </p>
-              <ul className="text-xs space-y-2 text-foreground pt-2 border-t">
-                <li>✓ 500 credits / month</li>
-                <li>✓ Priority inference queue</li>
-                <li>✓ Full Growth Coach suite</li>
-                <li>✓ Multi-account connection</li>
-              </ul>
-              <Link href="/register" className="w-full">
-                <Button variant="outline" className="w-full text-xs cursor-pointer">
-                  Upgrade to Growth
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+        <div className="flex flex-col items-center gap-4">
+          <Link
+            href="/register"
+            className="rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            {t.app.landingFreeCta}
+          </Link>
+          <ul className="flex flex-wrap justify-center gap-2" aria-label={t.app.paymentMethods}>
+            {["Konnect", t.app.payBankCard, "e-Dinar", "Flouci"].map((method) => (
+              <li key={method} className="rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground shadow-card">
+                {method}
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
