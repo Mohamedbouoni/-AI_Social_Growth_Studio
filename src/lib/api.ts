@@ -30,6 +30,29 @@ export function unauthenticated() {
  * Maps thrown errors to JSON responses. Unexpected failures (provider, DB)
  * are logged in full but never echoed, since they may carry upstream details.
  */
+/**
+ * Recognizes failures caused by an incomplete installation rather than a bug,
+ * so the UI can say exactly what to fix instead of "something went wrong".
+ */
+function setupProblem(message: string): string | null {
+  if (/Could not find the (table|function)|schema cache|relation .* does not exist/i.test(message)) {
+    return "The database is not set up yet. Run supabase/setup.sql in the Supabase SQL Editor.";
+  }
+  if (message.includes("SUPABASE_SERVICE_ROLE_KEY")) {
+    return "SUPABASE_SERVICE_ROLE_KEY is missing from .env.local (Supabase → Project Settings → API).";
+  }
+  if (message.includes("No AI provider is configured")) {
+    return "No AI provider is configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env.local.";
+  }
+  if (message.includes("Konnect is not configured")) {
+    return "Payments are not configured. Add KONNECT_API_KEY and KONNECT_WALLET_ID to .env.local.";
+  }
+  if (message.includes("Ollama is not reachable")) {
+    return "AI_PROVIDER=ollama is set but Ollama is not running. Start Ollama or remove AI_PROVIDER from .env.local.";
+  }
+  return null;
+}
+
 export function handleApiError(err: unknown, route: string) {
   // Let Next.js handle its own control-flow errors (prerender bail-outs from
   // cookies()/request.url, redirect(), notFound()) instead of turning them into 500s
@@ -49,9 +72,16 @@ export function handleApiError(err: unknown, route: string) {
     );
   }
 
-  logger.error(`API ${route} error`, {
-    error: err instanceof Error ? err.message : String(err),
-  });
+  const message = err instanceof Error ? err.message : String(err);
+  logger.error(`API ${route} error`, { error: message });
+
+  const setup = setupProblem(message);
+  if (setup) {
+    return NextResponse.json(
+      { success: false, code: "SETUP_REQUIRED", error: setup },
+      { status: 503 }
+    );
+  }
 
   return NextResponse.json(
     { success: false, error: "Something went wrong. Please try again." },

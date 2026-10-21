@@ -7,6 +7,7 @@ import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { DashboardTopbar } from "@/components/dashboard/topbar";
 import { CoachProvider, useCoach } from "@/components/dashboard/coach-drawer";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { SetupBanner } from "@/components/dashboard/setup-banner";
 import { UpgradeProvider } from "@/components/billing/upgrade-provider";
 import { useLanguage } from "@/lib/i18n/provider";
 
@@ -54,6 +55,7 @@ export default function DashboardLayout({
                       Cache Components prerender the shell and defer the page body */}
                   <main className="min-w-0">
                     <Suspense fallback={<div className="h-96 animate-pulse rounded-xl bg-card shadow-card" />}>
+                      <SetupBanner />
                       {children}
                     </Suspense>
                   </main>

@@ -74,6 +74,10 @@ export class OllamaProvider implements AIProvider {
         options: { temperature: 0.7, top_p: 0.9 },
       }),
       signal: AbortSignal.timeout(60000), // 60s timeout for local inference
+    }).catch((err: unknown) => {
+      throw new Error(
+        `Ollama is not reachable at ${this.baseUrl}: ${err instanceof Error ? err.message : String(err)}`
+      );
     });
 
     if (!response.ok) {

@@ -12,7 +12,8 @@ export type AppErrorCode =
   | "LIMIT_REACHED"
   | "PLAN_FEATURE"
   | "DUPLICATE_REQUEST"
-  | "PAYMENT_PROVIDER";
+  | "PAYMENT_PROVIDER"
+  | "SETUP_REQUIRED";
 
 export class AppError extends Error {
   readonly status: number;
