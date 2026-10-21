@@ -1,43 +1,57 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
+import { DirectionProvider } from "@base-ui/react/direction-provider";
+import { Sparkles } from "lucide-react";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { DashboardTopbar } from "@/components/dashboard/topbar";
+import { CoachProvider, useCoach } from "@/components/dashboard/coach-drawer";
+import { useLanguage } from "@/lib/i18n/provider";
+
+function AskCoachPill() {
+  const { t } = useLanguage();
+  const { openCoach } = useCoach();
+
+  return (
+    <button
+      type="button"
+      onClick={() => openCoach()}
+      aria-label={t.shell.askCoach}
+      className="fixed end-4 bottom-24 z-40 inline-flex h-14 cursor-pointer items-center gap-2.5 rounded-full bg-primary ps-2 pe-2 text-primary-foreground shadow-float transition-transform outline-none hover:-translate-y-0.5 focus-visible:ring-3 focus-visible:ring-ring/50 sm:pe-5 md:end-6 md:bottom-6"
+    >
+      <span className="grid size-10 place-items-center rounded-full bg-sage text-sage-foreground">
+        <Sparkles className="size-5" />
+      </span>
+      <span className="hidden text-sm font-semibold sm:inline">{t.shell.askCoach}</span>
+    </button>
+  );
+}
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { dir } = useLanguage();
 
   return (
-    <div className="min-h-screen flex bg-background text-foreground">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:block fixed inset-y-0 start-0 z-40 w-64">
-        <DashboardSidebar />
-      </div>
+    // Base UI needs the direction to place tooltips and menus on the right side in RTL
+    <DirectionProvider direction={dir}>
+      <CoachProvider>
+        <div className="min-h-screen bg-background text-foreground">
+          <DashboardSidebar />
 
-      {/* Mobile sidebar overlay drawer */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden flex">
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-          <div className="relative z-50 w-72 h-full bg-card shadow-2xl">
-            <DashboardSidebar onCloseMobile={() => setMobileMenuOpen(false)} />
+          {/* Rail is 5rem wide + 1rem inset, so content starts at 8rem on desktop */}
+          <div className="px-4 pt-5 pb-28 sm:px-6 md:ps-32 md:pe-8 md:pt-6 md:pb-12">
+            <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 md:gap-8">
+              <DashboardTopbar />
+              <main className="min-w-0">{children}</main>
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Main content viewport */}
-      <div className="flex-1 flex flex-col lg:ps-64 min-w-0">
-        <DashboardTopbar onOpenMobileMenu={() => setMobileMenuOpen(true)} />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          {children}
-        </main>
-      </div>
-    </div>
+          <AskCoachPill />
+        </div>
+      </CoachProvider>
+    </DirectionProvider>
   );
 }

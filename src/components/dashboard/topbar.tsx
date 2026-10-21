@@ -1,173 +1,166 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  Menu,
-  Sparkles,
-  Globe,
-  LogOut,
-  User,
-  Settings,
-  Bell,
-  Search,
-} from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Bell, Gift, MessageCircle, Search, Sparkles } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/provider";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
+import { useCoach } from "./coach-drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import type { IconComponent } from "./stat-tile";
 
-interface TopbarProps {
-  onOpenMobileMenu: () => void;
+// Route prefix → t.shell keys for the page title and subtitle.
+// Anything else under /dashboard falls back to the overview title.
+const PAGE_TITLES: { prefix: string; title: string; subtitle: string }[] = [
+  { prefix: "/dashboard/studio", title: "studioTitle", subtitle: "studioSubtitle" },
+  { prefix: "/dashboard/library", title: "libraryTitle", subtitle: "librarySubtitle" },
+  { prefix: "/dashboard/calendar", title: "calendarTitle", subtitle: "calendarSubtitle" },
+  { prefix: "/dashboard/analytics", title: "analyticsTitle", subtitle: "analyticsSubtitle" },
+  { prefix: "/dashboard/settings", title: "settingsTitle", subtitle: "settingsSubtitle" },
+  { prefix: "/dashboard/billing", title: "billingTitle", subtitle: "billingSubtitle" },
+];
+const OVERVIEW_TITLE = { prefix: "/dashboard", title: "overviewTitle", subtitle: "overviewSubtitle" };
+
+const iconButtonClass =
+  "relative grid size-12 shrink-0 cursor-pointer place-items-center rounded-full bg-card text-foreground shadow-card transition-colors outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50";
+
+function CountBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="absolute -top-0.5 -end-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-sage px-1 text-[11px] font-bold text-sage-foreground tabular-nums ring-2 ring-background">
+      {count > 9 ? "9+" : count}
+    </span>
+  );
 }
 
-export function DashboardTopbar({ onOpenMobileMenu }: TopbarProps) {
+export function DashboardTopbar() {
+  const pathname = usePathname();
   const router = useRouter();
-  const { t, language, toggleLanguage } = useLanguage();
-  const supabase = createClient();
+  const { t } = useLanguage();
+  const { openCoach } = useCoach();
 
-  const [userEmail, setUserEmail] = useState<string>("creator@example.com");
-  const [userName, setUserName] = useState<string>("Creator");
+  const [query, setQuery] = useState("");
+  const [noticesSeen, setNoticesSeen] = useState(false);
 
-  useEffect(() => {
-    async function getUser() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        setUserEmail(user.email ?? "creator@example.com");
-        const name =
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email?.split("@")[0] ||
-          "Creator";
-        setUserName(name);
-      }
-    }
-    getUser();
-  }, [supabase]);
+  const page = PAGE_TITLES.find((entry) => pathname.startsWith(entry.prefix)) ?? OVERVIEW_TITLE;
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  };
+  // Onboarding tips until real notifications exist
+  const notices: {
+    id: string;
+    icon: IconComponent;
+    title: string | undefined;
+    body: string | undefined;
+    onSelect: () => void;
+  }[] = [
+    {
+      id: "welcome",
+      icon: Gift,
+      title: t.shell.welcomeNoticeTitle,
+      body: t.shell.welcomeNoticeBody,
+      onSelect: () => router.push("/dashboard/studio"),
+    },
+    {
+      id: "coach",
+      icon: Sparkles,
+      title: t.shell.coachNoticeTitle,
+      body: t.shell.coachNoticeBody,
+      onSelect: () => openCoach(),
+    },
+  ];
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    openCoach(query.trim());
+    setQuery("");
   };
 
   return (
-    <header className="h-16 border-b border-border bg-card/40 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
-      {/* Left: Mobile menu toggle & quick search */}
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onOpenMobileMenu}
-          className="lg:hidden size-9 rounded-lg"
-          aria-label="Open sidebar"
+    <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      {/* Logo mark + page title */}
+      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+        <Link
+          href="/dashboard"
+          aria-label={t.brand}
+          className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-card transition-opacity hover:opacity-90"
         >
-          <Menu className="size-5" />
-        </Button>
-
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border/80 bg-background/60 text-xs text-muted-foreground w-64">
-          <Search className="size-3.5" />
-          <span>Quick search or jump to...</span>
-          <kbd className="ml-auto pointer-events-none inline-flex h-4 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-            ⌘K
-          </kbd>
+          <Sparkles className="size-5" />
+        </Link>
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl leading-tight font-bold tracking-tight sm:text-[1.75rem]">
+            {t.shell[page.title]}
+          </h1>
+          <p className="truncate text-sm text-muted-foreground">{t.shell[page.subtitle]}</p>
         </div>
       </div>
 
-      {/* Right: Quick Studio CTA + Language + Notifications + Avatar */}
-      <div className="flex items-center gap-2.5">
-        <Link href="/dashboard/studio">
-          <Button
-            size="sm"
-            className="hidden sm:inline-flex items-center gap-2 bg-gradient-to-r from-violet-600 via-indigo-600 to-pink-500 hover:opacity-90 text-white font-medium text-xs px-3.5 py-2 shadow-sm shadow-indigo-500/20 cursor-pointer"
+      {/* Search pill + icon buttons */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        <form
+          role="search"
+          onSubmit={handleSearch}
+          className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-full bg-card ps-5 pe-1.5 shadow-card focus-within:ring-3 focus-within:ring-ring/30 lg:w-[22rem] lg:flex-none xl:w-[26rem]"
+        >
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.shell.searchPlaceholder}
+            aria-label={t.shell.search}
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          />
+          <button
+            type="submit"
+            aria-label={t.shell.search}
+            className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-85"
           >
-            <Sparkles className="size-3.5" />
-            <span>{t.dashboard.quickAction}</span>
-          </Button>
-        </Link>
+            <Search className="size-4" />
+          </button>
+        </form>
 
-        {/* Language switch */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={toggleLanguage}
-          className="text-xs font-medium gap-1.5 px-2.5 cursor-pointer"
+        <button
+          type="button"
+          aria-label={t.shell.messages}
+          onClick={() => openCoach()}
+          className={iconButtonClass}
         >
-          <Globe className="size-3.5" />
-          <span>{language === "en" ? "العربية" : "English"}</span>
-        </Button>
+          <MessageCircle className="size-5" />
+        </button>
 
-        {/* Notifications */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 rounded-lg relative text-muted-foreground hover:text-foreground"
-        >
-          <Bell className="size-4" />
-          <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-pink-500" />
-        </Button>
-
-        {/* User profile menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger className="relative size-9 rounded-full p-0 flex items-center justify-center outline-none cursor-pointer">
-            <Avatar className="size-8 border border-border">
-              <AvatarFallback className="bg-gradient-to-tr from-violet-600 to-indigo-600 text-white text-xs font-bold">
-                {getInitials(userName)}
-              </AvatarFallback>
-            </Avatar>
+        <DropdownMenu onOpenChange={(open) => open && setNoticesSeen(true)}>
+          <DropdownMenuTrigger aria-label={t.shell.notifications} className={iconButtonClass}>
+            <Bell className="size-5" />
+            <CountBadge count={noticesSeen ? 0 : notices.length} />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 p-1.5">
-            <DropdownMenuLabel className="font-normal px-2 py-1.5">
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-semibold leading-none">{userName}</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {userEmail}
-                </p>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => router.push("/dashboard/settings")}
-              className="flex items-center gap-2 text-xs py-2 cursor-pointer"
-            >
-              <User className="size-4" />
-              <span>Profile</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => router.push("/dashboard/settings?tab=subscription")}
-              className="flex items-center gap-2 text-xs py-2 cursor-pointer"
-            >
-              <Settings className="size-4" />
-              <span>Billing & Subscription</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-xs py-2 text-destructive focus:text-destructive cursor-pointer"
-            >
-              <LogOut className="size-4" />
-              <span>{t.nav.logout}</span>
-            </DropdownMenuItem>
+          <DropdownMenuContent align="end" sideOffset={8} className="w-80 rounded-xl p-1.5">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="px-2 py-1.5 text-sm font-semibold text-foreground">
+                {t.shell.notifications}
+              </DropdownMenuLabel>
+              {notices.map((notice) => {
+                const Icon = notice.icon;
+                return (
+                  <DropdownMenuItem
+                    key={notice.id}
+                    onClick={notice.onSelect}
+                    className="items-start gap-3 rounded-lg p-2"
+                  >
+                    <span className="grid size-9 shrink-0 place-items-center rounded-full bg-sage-softer text-sage">
+                      <Icon className="size-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold">{notice.title}</span>
+                      <span className="block text-xs text-muted-foreground">{notice.body}</span>
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

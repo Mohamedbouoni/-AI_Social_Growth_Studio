@@ -1,10 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Sparkles,
   LayoutDashboard,
   Wand2,
   FolderOpen,
@@ -12,25 +11,117 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Globe,
-  ChevronRight,
-  Zap,
+  Languages,
+  Moon,
+  Sun,
+  CreditCard,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/provider";
+import { useTheme } from "@/lib/theme";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { IconComponent } from "./stat-tile";
 
-interface SidebarProps {
-  onCloseMobile?: () => void;
+const itemClass =
+  "relative grid size-12 shrink-0 cursor-pointer place-items-center rounded-full text-sidebar-foreground transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
+const activeClass =
+  "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground";
+
+// Dictionary lookups are `string | undefined` under noUncheckedIndexedAccess
+interface NavItem {
+  label: string | undefined;
+  href: string;
+  icon: IconComponent;
+  active: boolean;
 }
 
-export function DashboardSidebar({ onCloseMobile }: SidebarProps) {
+/** Icon-only rail item with a tooltip on the inline-end side */
+function RailItem({
+  label,
+  icon: Icon,
+  href,
+  active,
+  onClick,
+}: {
+  label: string | undefined;
+  icon: IconComponent;
+  href?: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const className = cn(itemClass, active && activeClass);
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          href ? (
+            <Link
+              href={href}
+              aria-label={label}
+              aria-current={active ? "page" : undefined}
+              className={className}
+            />
+          ) : (
+            <button type="button" aria-label={label} onClick={onClick} className={className} />
+          )
+        }
+      >
+        <Icon className="size-5" />
+      </TooltipTrigger>
+      <TooltipContent side="inline-end" sideOffset={14}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+export function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { t, language, toggleLanguage, dir } = useLanguage();
+  const { t, toggleLanguage } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
   const supabase = createClient();
+
+  const [userEmail, setUserEmail] = useState("creator@example.com");
+  const [userName, setUserName] = useState("Creator");
+
+  useEffect(() => {
+    async function getUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        setUserEmail(user.email ?? "creator@example.com");
+        setUserName(
+          user.user_metadata?.full_name ||
+            user.user_metadata?.name ||
+            user.email?.split("@")[0] ||
+            "Creator"
+        );
+      }
+    }
+    getUser();
+  }, [supabase]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -38,7 +129,7 @@ export function DashboardSidebar({ onCloseMobile }: SidebarProps) {
     router.refresh();
   };
 
-  const navItems = [
+  const navItems: NavItem[] = [
     {
       label: t.nav.overview,
       href: "/dashboard",
@@ -49,7 +140,6 @@ export function DashboardSidebar({ onCloseMobile }: SidebarProps) {
       label: t.nav.studio,
       href: "/dashboard/studio",
       icon: Wand2,
-      badge: "AI",
       active: pathname.startsWith("/dashboard/studio"),
     },
     {
@@ -70,116 +160,115 @@ export function DashboardSidebar({ onCloseMobile }: SidebarProps) {
       icon: BarChart3,
       active: pathname.startsWith("/dashboard/analytics"),
     },
-    {
-      label: t.nav.settings,
-      href: "/dashboard/settings",
-      icon: Settings,
-      active: pathname.startsWith("/dashboard/settings"),
-    },
   ];
 
-  return (
-    <aside className="w-64 h-full flex flex-col justify-between border-r border-border bg-card/60 backdrop-blur-xl">
-      {/* Top section: Brand */}
-      <div className="p-4 space-y-6">
-        <div className="flex items-center justify-between">
-          <Link
-            href="/dashboard"
-            onClick={onCloseMobile}
-            className="flex items-center gap-2.5 font-bold text-base tracking-tight hover:opacity-90 transition"
-          >
-            <div className="size-8 rounded-xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-pink-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
-              <Sparkles className="size-4" />
-            </div>
-            <span className="truncate">{t.brand}</span>
-          </Link>
+  const ThemeIcon = theme === "dark" ? Sun : Moon;
+  const themeLabel = theme === "dark" ? t.common.lightMode : t.common.darkMode;
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleLanguage}
-            className="size-8 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
-            title={language === "en" ? "تبديل إلى العربية" : "Switch to English"}
-          >
-            <Globe className="size-4" />
-          </Button>
-        </div>
-
-        {/* Navigation list */}
-        <nav className="space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onCloseMobile}
-                className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  item.active
-                    ? "bg-primary text-primary-foreground font-semibold shadow-sm"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon className="size-4 shrink-0" />
-                  <span>{item.label}</span>
-                </div>
-                {item.badge && (
-                  <Badge
-                    variant={item.active ? "secondary" : "default"}
-                    className="text-[10px] uppercase font-bold py-0 h-4 bg-gradient-to-r from-violet-500 to-pink-500 text-white"
-                  >
-                    {item.badge}
-                  </Badge>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* Bottom section: Usage card, upgrade & logout */}
-      <div className="p-4 space-y-3">
-        {/* Usage Card */}
-        <div className="p-3.5 rounded-xl border border-border/80 bg-background/80 space-y-2.5 shadow-sm">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold flex items-center gap-1.5 text-foreground">
-              <Zap className="size-3.5 text-amber-500 fill-amber-500" />
-              <span>{t.common.freePlan}</span>
-            </span>
-            <span className="text-muted-foreground font-mono">7 / 10 used</span>
-          </div>
-
-          {/* Progress bar */}
-          <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
-              style={{ width: "70%" }}
-            />
-          </div>
-
-          <Link href="/dashboard/settings?tab=subscription">
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full text-xs font-semibold h-7 border-border hover:border-primary/50 text-foreground cursor-pointer"
-            >
-              {t.common.upgrade}
-            </Button>
-          </Link>
-        </div>
-
-        <Separator />
-
-        {/* Logout action */}
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition cursor-pointer"
+  // Account menu: the avatar on desktop; on mobile it also holds the rail's
+  // bottom-group actions, since the tab bar has no room for them
+  const accountMenu = (compact: boolean) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={t.shell.account}
+        className="grid size-12 shrink-0 cursor-pointer place-items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <Avatar className="size-10">
+          <AvatarFallback className="bg-sage-soft text-xs font-bold text-sage">
+            {getInitials(userName)}
+          </AvatarFallback>
+        </Avatar>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side={compact ? "top" : "inline-end"}
+        align="end"
+        sideOffset={compact ? 16 : 14}
+        className="w-60 rounded-xl p-1.5"
+      >
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="px-2 py-1.5">
+            <p className="truncate text-sm font-semibold text-foreground">{userName}</p>
+            <p className="truncate text-xs font-normal text-muted-foreground">{userEmail}</p>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => router.push("/dashboard/settings")} className="gap-2 py-2">
+          <Settings />
+          {t.nav.settings}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => router.push("/dashboard/settings?tab=subscription")}
+          className="gap-2 py-2"
         >
-          <LogOut className="size-4 shrink-0" />
-          <span>{t.nav.logout}</span>
-        </button>
-      </div>
-    </aside>
+          <CreditCard />
+          {t.shell.billing}
+        </DropdownMenuItem>
+        {compact && (
+          <>
+            <DropdownMenuItem onClick={toggleTheme} closeOnClick={false} className="gap-2 py-2">
+              <ThemeIcon />
+              {themeLabel}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={toggleLanguage} closeOnClick={false} className="gap-2 py-2">
+              <Languages />
+              {t.shell.switchLanguage}
+            </DropdownMenuItem>
+          </>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={handleLogout} className="gap-2 py-2">
+          <LogOut />
+          {t.nav.logout}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  return (
+    <>
+      {/* Desktop: floating icon rail */}
+      <aside className="fixed inset-y-4 start-4 z-40 hidden w-20 flex-col items-center justify-between gap-6 overflow-y-auto rounded-[1.75rem] bg-sidebar py-5 shadow-card [scrollbar-width:none] md:flex">
+        <nav aria-label={t.shell.mainNavigation} className="flex flex-col items-center gap-2">
+          {navItems.map((item) => (
+            <RailItem key={item.href} {...item} />
+          ))}
+        </nav>
+
+        <div className="flex flex-col items-center gap-2">
+          <RailItem label={themeLabel} icon={ThemeIcon} onClick={toggleTheme} />
+          <RailItem label={t.shell.switchLanguage} icon={Languages} onClick={toggleLanguage} />
+          <RailItem
+            label={t.nav.settings}
+            icon={Settings}
+            href="/dashboard/settings"
+            active={pathname.startsWith("/dashboard/settings")}
+          />
+          <RailItem label={t.nav.logout} icon={LogOut} onClick={handleLogout} />
+          {accountMenu(false)}
+        </div>
+      </aside>
+
+      {/* Mobile: bottom tab bar */}
+      <nav
+        aria-label={t.shell.mainNavigation}
+        className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 flex items-center justify-between rounded-full bg-sidebar p-1.5 shadow-float md:hidden"
+      >
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-label={item.label}
+              aria-current={item.active ? "page" : undefined}
+              className={cn(itemClass, item.active && activeClass)}
+            >
+              <Icon className="size-5" />
+            </Link>
+          );
+        })}
+        {accountMenu(true)}
+      </nav>
+    </>
   );
 }
