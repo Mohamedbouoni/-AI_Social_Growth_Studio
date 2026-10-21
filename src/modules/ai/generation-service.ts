@@ -5,6 +5,7 @@
 import type { GeneratedContent, GenerationInput } from "./schemas";
 import { generationInputSchema } from "./schemas";
 import { getAIProvider } from "./provider-factory";
+import type { ProviderResult } from "./provider";
 import { createAdminClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logging/logger";
 import { PLAN_LIMITS, type Plan } from "@/types";
@@ -58,7 +59,10 @@ export async function generateContentService(
   const workspaceId: string = workspace.id;
   const userPlan: Plan = (workspace.plan as Plan) || "free";
   const planLimit = PLAN_LIMITS[userPlan]?.generationsPerMonth ?? 10;
-  const provider = getAIProvider();
+  const provider = getAIProvider({
+    tier: userPlan === "free" ? "fast" : "quality",
+    language: input.language,
+  });
 
   // 3. Atomically check quota + idempotency and reserve one credit
   const { data: reservation, error: reservationError } = await supabase.rpc(
@@ -101,9 +105,9 @@ export async function generateContentService(
     workspaceId,
   });
 
-  let generatedData: GeneratedContent;
+  let generated: ProviderResult<GeneratedContent>;
   try {
-    generatedData = await provider.generateContent(input);
+    generated = await provider.generateContent(input);
   } catch (err) {
     const { error: releaseError } = await supabase
       .from("generation_usage")
@@ -120,8 +124,26 @@ export async function generateContentService(
     throw err;
   }
 
+  // 5. Record which provider actually answered and the tokens it used
+  const { error: usageUpdateError } = await supabase
+    .from("generation_usage")
+    .update({
+      model: generated.providerName,
+      tokens_in: generated.usage.promptCount,
+      tokens_out: generated.usage.completionCount,
+    })
+    .eq("workspace_id", workspaceId)
+    .eq("request_id", requestId);
+
+  if (usageUpdateError) {
+    logger.warn("Failed to record generation usage details", {
+      requestId,
+      error: usageUpdateError.message,
+    });
+  }
+
   return {
-    data: generatedData,
+    data: generated.data,
     creditsRemaining: Math.max(0, planLimit - used),
     isCached: false,
   };

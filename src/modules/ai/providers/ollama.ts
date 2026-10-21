@@ -2,25 +2,27 @@
 // Local Ollama AI Provider
 // =============================================================================
 
-import type { AIProvider } from "../provider";
+import type { AIProvider, ChatMessage, ProviderResult } from "../provider";
 import type { GeneratedContent, GenerationInput } from "../schemas";
-import {
-  youtubeOutputSchema,
-  tiktokOutputSchema,
-  instagramReelOutputSchema,
-  instagramCarouselOutputSchema,
-} from "../schemas";
+import { parseGeneratedContent } from "../validate";
 import { buildSystemPrompt, buildUserPrompt } from "../prompts/template";
 import { logger } from "@/lib/logging/logger";
 
+interface OllamaChatResponse {
+  message?: { content?: string };
+  prompt_eval_count?: number;
+  eval_count?: number;
+}
+
 export class OllamaProvider implements AIProvider {
-  readonly name = "ollama";
+  readonly name: string;
   private baseUrl: string;
   private model: string;
 
   constructor() {
     this.baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
     this.model = process.env.OLLAMA_MODEL || "llama3.1";
+    this.name = `ollama:${this.model}`;
   }
 
   async healthCheck(): Promise<boolean> {
@@ -35,84 +37,62 @@ export class OllamaProvider implements AIProvider {
     }
   }
 
-  async generateContent(input: GenerationInput): Promise<GeneratedContent> {
-    const systemPrompt = buildSystemPrompt(input);
-    const userPrompt = buildUserPrompt(input);
-
+  async generateContent(input: GenerationInput): Promise<ProviderResult<GeneratedContent>> {
     logger.info("Ollama generation started", {
       model: this.model,
       platform: input.platform,
       contentType: input.contentType,
     });
 
-    try {
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: this.model,
-          system: systemPrompt,
-          prompt: userPrompt,
-          format: "json",
-          stream: false,
-          options: {
-            temperature: 0.7,
-            top_p: 0.9,
-          },
-        }),
-        signal: AbortSignal.timeout(60000), // 60s timeout for local inference
-      });
+    const result = await this.request(
+      [
+        { role: "system", content: buildSystemPrompt(input) },
+        { role: "user", content: buildUserPrompt(input) },
+      ],
+      true
+    );
 
-      if (!response.ok) {
-        throw new Error(
-          `Ollama API error: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const data = await response.json();
-      const rawText = data.response;
-      const parsedJson = JSON.parse(rawText);
-
-      return this.formatAndValidateOutput(input, parsedJson);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error("Ollama inference failed", { error: message });
-      throw new Error(`Ollama generation failed: ${message}`);
-    }
+    return { ...result, data: parseGeneratedContent(input, result.data) };
   }
 
-  private formatAndValidateOutput(
-    input: GenerationInput,
-    rawJson: Record<string, unknown>
-  ): GeneratedContent {
-    switch (input.platform) {
-      case "youtube": {
-        const validated = youtubeOutputSchema.parse(rawJson);
-        return { platform: "youtube", content: validated };
-      }
-      case "tiktok": {
-        const validated = tiktokOutputSchema.parse(rawJson);
-        return { platform: "tiktok", content: validated };
-      }
-      case "instagram": {
-        if (input.contentType === "carousel") {
-          const validated = instagramCarouselOutputSchema.parse(rawJson);
-          return {
-            platform: "instagram",
-            contentType: "carousel",
-            content: validated,
-          };
-        } else {
-          const validated = instagramReelOutputSchema.parse(rawJson);
-          return {
-            platform: "instagram",
-            contentType: "reel",
-            content: validated,
-          };
-        }
-      }
+  chat(messages: ChatMessage[]): Promise<ProviderResult<string>> {
+    return this.request(messages, false);
+  }
+
+  private async request(
+    messages: ChatMessage[],
+    jsonMode: boolean
+  ): Promise<ProviderResult<string>> {
+    const response = await fetch(`${this.baseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        messages,
+        stream: false,
+        ...(jsonMode ? { format: "json" } : {}),
+        options: { temperature: 0.7, top_p: 0.9 },
+      }),
+      signal: AbortSignal.timeout(60000), // 60s timeout for local inference
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
     }
+
+    const data = (await response.json()) as OllamaChatResponse;
+    const text = data.message?.content;
+    if (!text) {
+      throw new Error("Ollama returned an empty response.");
+    }
+
+    return {
+      data: text,
+      usage: {
+        promptCount: data.prompt_eval_count ?? 0,
+        completionCount: data.eval_count ?? 0,
+      },
+      providerName: this.name,
+    };
   }
 }
