@@ -215,7 +215,7 @@ export default function LandingPage() {
                   10-Second Retention Hook
                 </span>
                 <p className="text-xs font-medium mt-1 leading-relaxed">
-                  "If you think succeeding as a solo creator takes years of trial and error, you're about to see the exact blueprint that helped me scale from 0 to 100k without paid ads..."
+                  &ldquo;If you think succeeding as a solo creator takes years of trial and error, you&apos;re about to see the exact blueprint that helped me scale from 0 to 100k without paid ads...&rdquo;
                 </p>
               </div>
             </div>
@@ -228,7 +228,7 @@ export default function LandingPage() {
                   2-Second Pattern Disruptor
                 </span>
                 <p className="text-sm font-bold mt-1">
-                  "Stop scrolling. If you still post on TikTok without this 3-part formula, you're wasting 80% of your views..."
+                  &ldquo;Stop scrolling. If you still post on TikTok without this 3-part formula, you&apos;re wasting 80% of your views...&rdquo;
                 </p>
               </div>
 
@@ -288,7 +288,7 @@ export default function LandingPage() {
               </div>
               <h3 className="text-base font-bold">Platform-Specific Schemas</h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                No generic AI fluff. YouTube descriptions aren't treated like Instagram reels. Every output conforms to strict platform rules.
+                No generic AI fluff. YouTube descriptions aren&apos;t treated like Instagram reels. Every output conforms to strict platform rules.
               </p>
             </CardContent>
           </Card>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Sparkles,
@@ -30,41 +30,46 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Platform, ContentType, Tone, Language } from "@/modules/ai/schemas";
+import type {
+  Platform,
+  ContentType,
+  Tone,
+  Language,
+  GeneratedContent,
+} from "@/modules/ai/schemas";
+
+const DEFAULT_CONTENT_TYPE: Record<Platform, ContentType> = {
+  youtube: "video",
+  tiktok: "short",
+  instagram: "carousel",
+};
 
 function AIStudioContent() {
   const searchParams = useSearchParams();
   const { t, language: appLanguage, dir } = useLanguage();
 
+  // Pre-fill from query parameters
+  const qPlatform = searchParams.get("platform");
+  const initialPlatform: Platform =
+    qPlatform === "tiktok" || qPlatform === "instagram" ? qPlatform : "youtube";
+
   // Form states
-  const [platform, setPlatform] = useState<Platform>("youtube");
-  const [contentType, setContentType] = useState<ContentType>("video");
+  const [platform, setPlatform] = useState<Platform>(initialPlatform);
+  const [contentType, setContentType] = useState<ContentType>(
+    DEFAULT_CONTENT_TYPE[initialPlatform]
+  );
   const [tone, setTone] = useState<Tone>("educational");
   const [niche, setNiche] = useState("Productivity & Tech");
-  const [idea, setIdea] = useState("");
+  const [idea, setIdea] = useState(() => searchParams.get("idea") ?? "");
   const [outputLanguage, setOutputLanguage] = useState<Language>("en");
 
   // Execution states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<GeneratedContent | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-
-  // Pre-fill from query parameters
-  useEffect(() => {
-    const qPlatform = searchParams.get("platform");
-    const qIdea = searchParams.get("idea");
-    if (qPlatform === "youtube" || qPlatform === "tiktok" || qPlatform === "instagram") {
-      setPlatform(qPlatform);
-      if (qPlatform === "tiktok") setContentType("short");
-      if (qPlatform === "instagram") setContentType("carousel");
-    }
-    if (qIdea) {
-      setIdea(qIdea);
-    }
-  }, [searchParams]);
 
   // Adjust content type default when platform changes
   const handlePlatformChange = (p: Platform) => {
@@ -412,7 +417,7 @@ function AIStudioContent() {
               <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-border bg-card">
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="capitalize text-xs font-bold">
-                    {result.platform} {result.contentType ? `· ${result.contentType}` : ""}
+                    {result.platform} {"contentType" in result ? `· ${result.contentType}` : ""}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
                     Language: {outputLanguage.toUpperCase()}

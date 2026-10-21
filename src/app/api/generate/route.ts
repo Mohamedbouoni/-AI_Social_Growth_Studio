@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { generateContentService } from "@/modules/ai/generation-service";
+import {
+  generateContentService,
+  GenerationError,
+} from "@/modules/ai/generation-service";
 import { logger } from "@/lib/logging/logger";
 
 export async function POST(request: Request) {
@@ -8,15 +12,24 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const {
       data: { user },
-      error: authError,
     } = await supabase.auth.getUser();
 
-    // In local dev without active Supabase session, fallback to demo user ID so dev works seamlessly
-    const userId = user?.id || "demo-creator-id";
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required." },
+        { status: 401 }
+      );
+    }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (body === null) {
+      return NextResponse.json(
+        { success: false, error: "Invalid JSON body." },
+        { status: 400 }
+      );
+    }
 
-    const result = await generateContentService(userId, body);
+    const result = await generateContentService(user.id, body);
 
     return NextResponse.json({
       success: true,
@@ -24,23 +37,28 @@ export async function POST(request: Request) {
       creditsRemaining: result.creditsRemaining,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Generation failed.";
+    if (err instanceof ZodError) {
+      return NextResponse.json(
+        { success: false, error: "Invalid generation request.", issues: err.issues },
+        { status: 400 }
+      );
+    }
+
+    if (err instanceof GenerationError) {
+      return NextResponse.json(
+        { success: false, error: err.message },
+        { status: err.status }
+      );
+    }
+
+    // Unexpected failures (provider errors, DB errors) are logged in full but
+    // never echoed to the client, since they may contain upstream details.
+    const message = err instanceof Error ? err.message : String(err);
     logger.error("API /api/generate error", { error: message });
 
-    const status = message.includes("limit")
-      ? 403
-      : message.includes("not found")
-      ? 404
-      : message.includes("validation") || message.includes("invalid")
-      ? 400
-      : 500;
-
     return NextResponse.json(
-      {
-        success: false,
-        error: message,
-      },
-      { status }
+      { success: false, error: "Generation failed. Please try again." },
+      { status: 500 }
     );
   }
 }

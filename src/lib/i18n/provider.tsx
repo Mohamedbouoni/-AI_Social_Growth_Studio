@@ -1,7 +1,36 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 import { translations, type Language, type TranslationData } from "./translations";
+
+// Saved language lives in localStorage; read it through useSyncExternalStore so
+// the server render (and hydration) uses "en" and the client then switches.
+const STORAGE_KEY = "app_language";
+const listeners = new Set<() => void>();
+
+function subscribe(callback: () => void) {
+  listeners.add(callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    listeners.delete(callback);
+    window.removeEventListener("storage", callback);
+  };
+}
+
+// In-memory fallback for when localStorage is unavailable (private mode)
+let memoryLanguage: Language = "en";
+
+function getSnapshot(): Language {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === "ar" ? "ar" : "en";
+  } catch {
+    return memoryLanguage;
+  }
+}
+
+function getServerSnapshot(): Language {
+  return "en";
+}
 
 interface LanguageContextType {
   language: Language;
@@ -14,21 +43,16 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>("en");
-
-  useEffect(() => {
-    // Check saved language or browser preference
-    const saved = localStorage.getItem("app_language") as Language | null;
-    if (saved === "en" || saved === "ar") {
-      setLanguageState(saved);
-    }
-  }, []);
+  const language = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const setLanguage = (lang: Language) => {
-    setLanguageState(lang);
-    localStorage.setItem("app_language", lang);
-    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-    document.documentElement.lang = lang;
+    memoryLanguage = lang;
+    try {
+      localStorage.setItem(STORAGE_KEY, lang);
+    } catch {
+      // Storage unavailable — falls back to memoryLanguage for this session
+    }
+    listeners.forEach((listener) => listener());
   };
 
   const toggleLanguage = () => {

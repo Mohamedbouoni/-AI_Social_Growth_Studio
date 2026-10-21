@@ -15,6 +15,21 @@ export interface GenerationResult {
   isCached: boolean;
 }
 
+/**
+ * Expected, user-facing failures. The message is safe to return to the client.
+ */
+export class GenerationError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "GenerationError";
+  }
+}
+
+type ReservationResult = {
+  status: "reserved" | "duplicate" | "limit_reached";
+  used: number;
+};
+
 export async function generateContentService(
   userId: string,
   rawInput: unknown
@@ -23,87 +38,91 @@ export async function generateContentService(
   const input: GenerationInput = generationInputSchema.parse(rawInput);
   const requestId = input.requestId || crypto.randomUUID();
 
-  const supabase = await createAdminClient();
+  const supabase = createAdminClient();
 
   // 2. Fetch user's active workspace and plan
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("id", userId)
-    .single();
-
-  if (!profile) {
-    throw new Error("User profile not found.");
-  }
-
-  const { data: workspace } = await supabase
+  const { data: workspace, error: workspaceError } = await supabase
     .from("workspaces")
     .select("id, plan")
     .eq("owner_id", userId)
-    .single();
-
-  const workspaceId = workspace?.id;
-  const userPlan: Plan = (workspace?.plan as Plan) || "free";
-
-  if (!workspaceId) {
-    throw new Error("No active workspace found for user.");
-  }
-
-  // 3. Idempotency Check: if this exact request_id was already processed, return cached
-  const { data: existingUsage } = await supabase
-    .from("generation_usage")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .eq("request_id", requestId)
     .maybeSingle();
 
-  if (existingUsage) {
-    logger.info("Serving generation from idempotency cache", { requestId });
-    // Fetch variant or regenerate with isCached flag
+  if (workspaceError) {
+    throw new Error(`Workspace lookup failed: ${workspaceError.message}`);
   }
 
-  // 4. Check monthly quota usage
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
+  if (!workspace) {
+    throw new GenerationError("No active workspace found for user.", 404);
+  }
 
-  const { count: monthlyUsageCount } = await supabase
-    .from("generation_usage")
-    .select("*", { count: "exact", head: true })
-    .eq("workspace_id", workspaceId)
-    .gte("created_at", startOfMonth.toISOString());
-
-  const currentUsage = monthlyUsageCount ?? 0;
+  const workspaceId: string = workspace.id;
+  const userPlan: Plan = (workspace.plan as Plan) || "free";
   const planLimit = PLAN_LIMITS[userPlan]?.generationsPerMonth ?? 10;
+  const provider = getAIProvider();
 
-  if (currentUsage >= planLimit) {
-    throw new Error(
-      `You have reached your monthly generation limit (${planLimit} credits). Please upgrade to Creator or Growth plan to continue.`
+  // 3. Atomically check quota + idempotency and reserve one credit
+  const { data: reservation, error: reservationError } = await supabase.rpc(
+    "reserve_generation_credit",
+    {
+      p_workspace_id: workspaceId,
+      p_request_id: requestId,
+      p_limit: planLimit,
+      p_model: provider.name,
+      p_platform: input.platform,
+      p_content_type: input.contentType,
+    }
+  );
+
+  if (reservationError) {
+    throw new Error(`Credit reservation failed: ${reservationError.message}`);
+  }
+
+  const { status, used } = reservation as ReservationResult;
+
+  if (status === "duplicate") {
+    // Generated content is not persisted yet, so a replayed request_id can't
+    // be served from cache — reject it instead of charging a second credit.
+    throw new GenerationError(
+      "This request has already been processed. Please submit a new request.",
+      409
     );
   }
 
-  // 5. Invoke AI Provider
-  const provider = getAIProvider();
+  if (status === "limit_reached") {
+    throw new GenerationError(
+      `You have reached your monthly generation limit (${planLimit} credits). Please upgrade to Creator or Growth plan to continue.`,
+      403
+    );
+  }
+
+  // 4. Invoke AI Provider — release the reserved credit if it fails
   logger.info("Executing generation with provider", {
     providerName: provider.name,
     workspaceId,
   });
 
-  const generatedData = await provider.generateContent(input);
+  let generatedData: GeneratedContent;
+  try {
+    generatedData = await provider.generateContent(input);
+  } catch (err) {
+    const { error: releaseError } = await supabase
+      .from("generation_usage")
+      .delete()
+      .eq("workspace_id", workspaceId)
+      .eq("request_id", requestId);
 
-  // 6. Record usage record in database
-  await supabase.from("generation_usage").insert({
-    workspace_id: workspaceId,
-    request_id: requestId,
-    model: provider.name,
-    platform: input.platform,
-    content_type: input.contentType,
-    credits_used: 1,
-  });
+    if (releaseError) {
+      logger.error("Failed to release generation credit", {
+        requestId,
+        error: releaseError.message,
+      });
+    }
+    throw err;
+  }
 
   return {
     data: generatedData,
-    creditsRemaining: Math.max(0, planLimit - (currentUsage + 1)),
+    creditsRemaining: Math.max(0, planLimit - used),
     isCached: false,
   };
 }
