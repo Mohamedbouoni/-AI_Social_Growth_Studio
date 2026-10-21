@@ -1,198 +1,183 @@
 "use client";
 
-import React, { useState } from "react";
-import Link from "next/link";
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Video,
-  Layers,
-  Sparkles,
-} from "lucide-react";
-import { YouTubeIcon, TikTokIcon, InstagramIcon } from "@/components/icons";
+import React, { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/provider";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { formatDate, locale, toIsoDate } from "@/lib/i18n/format";
+import { useLibrary, useUpdateProject, type LibraryItem } from "@/lib/queries/hooks";
+import { PlatformIcon, itemPlatforms } from "@/lib/content";
+import { cn } from "@/lib/utils";
 
-interface ScheduledEvent {
-  day: number;
-  platform: "youtube" | "tiktok" | "instagram";
-  title: string;
-  time: string;
+const DRAG_TYPE = "application/x-content-id";
+
+/** 6-week grid starting on Monday that covers the given month */
+function monthGrid(month: Date): Date[] {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const offset = (first.getDay() + 6) % 7; // Monday = 0
+  const start = new Date(first.getFullYear(), first.getMonth(), 1 - offset);
+  return Array.from({ length: 42 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
 }
 
 export default function CalendarPage() {
   const { t, language } = useLanguage();
-  const [currentMonth, setCurrentMonth] = useState("October 2026");
+  const { data: items = [], isLoading } = useLibrary({ limit: 200 });
+  const updateProject = useUpdateProject();
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
-  const events: ScheduledEvent[] = [
-    {
-      day: 6,
-      platform: "youtube",
-      title: "5 Micro-Habits Video",
-      time: "18:00",
-    },
-    {
-      day: 12,
-      platform: "tiktok",
-      title: "Why Creators Fail Hook",
-      time: "14:30",
-    },
-    {
-      day: 15,
-      platform: "instagram",
-      title: "Zero-Dollar Stack Carousel",
-      time: "12:00",
-    },
-    {
-      day: 21,
-      platform: "youtube",
-      title: "Solo SaaS Deep Dive",
-      time: "19:00",
-    },
-    {
-      day: 24,
-      platform: "tiktok",
-      title: "3 AI Prompts Reel",
-      time: "16:00",
-    },
-    {
-      day: 28,
-      platform: "instagram",
-      title: "Audience Growth Blueprint",
-      time: "11:00",
-    },
-  ];
+  const days = useMemo(() => monthGrid(month), [month]);
+  const todayIso = toIsoDate(new Date());
 
-  const daysInMonth = 31;
-  const startDayOffset = 4; // Thursday
-
-  const daysOfWeek =
-    language === "ar"
-      ? ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
-      : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-  const getPlatformIcon = (p: string) => {
-    switch (p) {
-      case "youtube":
-        return <YouTubeIcon className="size-3" />;
-      case "tiktok":
-        return <TikTokIcon className="size-3" />;
-      case "instagram":
-        return <InstagramIcon className="size-3" />;
-      default:
-        return null;
+  const byDate = useMemo(() => {
+    const map = new Map<string, LibraryItem[]>();
+    for (const item of items) {
+      if (!item.planned_date) continue;
+      map.set(item.planned_date, [...(map.get(item.planned_date) ?? []), item]);
     }
-  };
+    return map;
+  }, [items]);
+
+  const unscheduled = items.filter((i) => !i.planned_date && i.status !== "archived" && i.status !== "published");
+
+  const weekdays = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat(locale(language), { weekday: "short" });
+    // 2026-01-05 is a Monday
+    return Array.from({ length: 7 }, (_, i) => formatter.format(new Date(2026, 0, 5 + i)));
+  }, [language]);
+
+  const schedule = (id: string, date: string | null) =>
+    updateProject.mutate({ id, planned_date: date, status: date ? "planned" : "draft" });
+
+  const shiftMonth = (delta: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1));
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">
-            {t.nav.calendar}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Plan your multi-platform release schedule and stay consistent
-          </p>
+    <div className="grid gap-4 xl:grid-cols-[1fr_20rem]">
+      <section className="rounded-xl bg-card p-4 shadow-card sm:p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <h3 className="flex-1 text-lg font-bold capitalize">
+            {formatDate(month, language, { month: "long", year: "numeric" })}
+          </h3>
+          <button
+            type="button"
+            onClick={() => {
+              const now = new Date();
+              setMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+            }}
+            className="h-9 cursor-pointer rounded-full bg-muted px-4 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            {t.app.today}
+          </button>
+          <button type="button" onClick={() => shiftMonth(-1)} aria-label={t.app.previousMonth} className="grid size-9 cursor-pointer place-items-center rounded-full bg-muted hover:bg-accent">
+            <ChevronLeft className="size-4 rtl:-scale-x-100" />
+          </button>
+          <button type="button" onClick={() => shiftMonth(1)} aria-label={t.app.nextMonth} className="grid size-9 cursor-pointer place-items-center rounded-full bg-muted hover:bg-accent">
+            <ChevronRight className="size-4 rtl:-scale-x-100" />
+          </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 border border-border rounded-lg p-1 bg-card">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 cursor-pointer"
-            >
-              <ChevronLeft className="size-4 rtl:rotate-180" />
-            </Button>
-            <span className="text-xs font-bold px-2">{currentMonth}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 cursor-pointer"
-            >
-              <ChevronRight className="size-4 rtl:rotate-180" />
-            </Button>
-          </div>
-
-          <Link href="/dashboard/studio">
-            <Button
-              size="sm"
-              className="bg-primary text-primary-foreground font-semibold cursor-pointer"
-            >
-              <Plus className="size-4 mr-1.5" />
-              <span>Schedule Post</span>
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* Calendar Grid */}
-      <Card className="border-border bg-card shadow-sm overflow-hidden">
-        <CardContent className="p-0">
-          {/* Day of week headers */}
-          <div className="grid grid-cols-7 border-b border-border bg-muted/40 text-center text-xs font-bold text-muted-foreground py-2.5">
-            {daysOfWeek.map((day) => (
-              <div key={day}>{day}</div>
+        <div className="overflow-x-auto">
+          <div className="grid min-w-[42rem] grid-cols-7 gap-1.5">
+            {weekdays.map((d) => (
+              <div key={d} className="pb-1 text-center text-xs font-semibold text-muted-foreground">
+                {d}
+              </div>
             ))}
-          </div>
-
-          {/* Days */}
-          <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-border min-h-[500px]">
-            {/* Empty slots before month starts */}
-            {Array.from({ length: startDayOffset }).map((_, i) => (
-              <div key={`empty-${i}`} className="bg-muted/10 p-2 min-h-24" />
-            ))}
-
-            {/* Days of month */}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const day = i + 1;
-              const dayEvents = events.filter((e) => e.day === day);
-              const isToday = day === 20;
-
+            {days.map((day) => {
+              const iso = toIsoDate(day);
+              const inMonth = day.getMonth() === month.getMonth();
+              const planned = byDate.get(iso) ?? [];
               return (
                 <div
-                  key={`day-${day}`}
-                  className={`p-2 min-h-24 flex flex-col justify-between transition hover:bg-muted/30 ${
-                    isToday ? "bg-violet-500/5 ring-1 ring-inset ring-violet-500/40" : ""
-                  }`}
+                  key={iso}
+                  onDragOver={(e) => {
+                    if (e.dataTransfer.types.includes(DRAG_TYPE)) {
+                      e.preventDefault();
+                      setDropTarget(iso);
+                    }
+                  }}
+                  onDragLeave={() => setDropTarget((current) => (current === iso ? null : current))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDropTarget(null);
+                    const id = e.dataTransfer.getData(DRAG_TYPE);
+                    if (id) schedule(id, iso);
+                  }}
+                  className={cn(
+                    "flex min-h-24 flex-col gap-1 rounded-lg p-1.5 transition-colors",
+                    inMonth ? "bg-muted/60" : "bg-transparent opacity-50",
+                    dropTarget === iso && "bg-sage-soft ring-2 ring-sage"
+                  )}
                 >
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`text-xs font-bold size-5 flex items-center justify-center rounded-full ${
-                        isToday
-                          ? "bg-primary text-primary-foreground font-extrabold"
-                          : "text-foreground/80"
-                      }`}
+                  <span
+                    className={cn(
+                      "grid size-6 place-items-center rounded-full text-xs font-semibold tabular-nums",
+                      iso === todayIso && "bg-primary text-primary-foreground"
+                    )}
+                  >
+                    {day.getDate()}
+                  </span>
+                  {planned.map((item) => (
+                    <div
+                      key={item.id}
+                      draggable
+                      onDragStart={(e) => e.dataTransfer.setData(DRAG_TYPE, item.id)}
+                      title={item.title}
+                      className="group flex cursor-grab items-center gap-1 rounded-md bg-card px-1.5 py-1 text-[11px] shadow-card"
                     >
-                      {day}
-                    </span>
-                  </div>
-
-                  {/* Events on this day */}
-                  <div className="space-y-1 mt-1">
-                    {dayEvents.map((evt, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-1.5 px-1.5 py-1 rounded bg-muted/80 text-[10px] font-semibold border border-border/60 hover:border-primary cursor-pointer truncate"
-                        title={evt.title}
+                      <PlatformIcon platform={itemPlatforms(item)[0] ?? "youtube"} className="size-3 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => schedule(item.id, null)}
+                        aria-label={t.app.unschedule}
+                        className="hidden shrink-0 cursor-pointer text-muted-foreground group-hover:block hover:text-negative"
                       >
-                        {getPlatformIcon(evt.platform)}
-                        <span className="truncate">{evt.title}</span>
-                      </div>
-                    ))}
-                  </div>
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               );
             })}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
+
+      <aside className="rounded-xl bg-card p-4 shadow-card sm:p-6">
+        <h3 className="mb-3 font-bold">{t.app.unscheduled}</h3>
+        {isLoading ? (
+          <div className="h-24 animate-pulse rounded-lg bg-muted" />
+        ) : unscheduled.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.app.unscheduledEmpty}</p>
+        ) : (
+          <ul className="space-y-2">
+            {unscheduled.map((item) => (
+              <li
+                key={item.id}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData(DRAG_TYPE, item.id)}
+                className="cursor-grab space-y-2 rounded-lg bg-muted p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <PlatformIcon platform={itemPlatforms(item)[0] ?? "youtube"} className="size-4 shrink-0" />
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</p>
+                </div>
+                {/* Date input as the touch-friendly alternative to drag and drop */}
+                <input
+                  type="date"
+                  aria-label={`${t.app.pickDate}: ${item.title}`}
+                  min={todayIso}
+                  onChange={(e) => e.target.value && schedule(item.id, e.target.value)}
+                  className="h-9 w-full rounded-full bg-card px-3 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </aside>
     </div>
   );
 }

@@ -1,298 +1,320 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  FolderOpen,
-  Search,
-  Filter,
-  Plus,
-  Copy,
-  Check,
-  MoreVertical,
-  ExternalLink,
-  Trash2,
-  Bookmark,
-  Calendar,
-} from "lucide-react";
-import { YouTubeIcon, TikTokIcon, InstagramIcon } from "@/components/icons";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { Check, Copy, Download, Eye, Lock, Search, Sparkles, Trash2, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/provider";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { fmt, formatDate } from "@/lib/i18n/format";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  useDeleteProject,
+  useLibrary,
+  useUpdateProject,
+  useUsage,
+  type LibraryItem,
+} from "@/lib/queries/hooks";
+import {
+  PLATFORM_NAMES,
+  PLATFORM_TINT,
+  PlatformIcon,
+  STATUS_STYLE,
+  itemPlatforms,
+  readiness,
+  statusLabel,
+} from "@/lib/content";
+import { PillTabs } from "@/components/dashboard/pill-tabs";
+import { RingGauge } from "@/components/dashboard/ring-gauge";
+import { useCoach } from "@/components/dashboard/coach-drawer";
+import { useUpgrade } from "@/components/billing/upgrade-provider";
+import { ContentPreview, contentToText } from "@/components/library/content-preview";
+import { cn } from "@/lib/utils";
+import type { ProjectStatus, SocialPlatform } from "@/types";
 
-interface ProjectItem {
-  id: string;
-  title: string;
-  niche: string;
-  platform: "youtube" | "tiktok" | "instagram";
-  contentType: string;
-  status: "draft" | "planned" | "published";
-  createdAt: string;
-  idea: string;
+type Filter = "all" | SocialPlatform;
+const STATUSES: ProjectStatus[] = ["draft", "planned", "published", "archived"];
+
+function csvEscape(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+function exportCsv(items: LibraryItem[]) {
+  const header = ["title", "niche", "status", "planned_date", "platforms", "tone", "language", "created_at"];
+  const rows = items.map((i) =>
+    [i.title, i.niche, i.status, i.planned_date ?? "", itemPlatforms(i).join(" "), i.tone, i.language, i.created_at]
+      .map((v) => csvEscape(String(v)))
+      .join(",")
+  );
+  // BOM so Excel opens Arabic text correctly
+  const blob = new Blob(["﻿" + [header.join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `content-library-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function LibraryPage() {
   const { t, language } = useLanguage();
+  const { openCoach } = useCoach();
+  const { openUpgrade } = useUpgrade();
+  const { data: usage } = useUsage();
+  const { data: items = [], isLoading, error } = useLibrary({ limit: 200 });
+  const updateProject = useUpdateProject();
+  const deleteProject = useDeleteProject();
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
-  const [selectedStatus, setSelectedStatus] = useState<string>("all");
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
+  const [viewing, setViewing] = useState<LibraryItem | null>(null);
 
-  const [projects, setProjects] = useState<ProjectItem[]>([
-    {
-      id: "p1",
-      title: "5 Micro-Habits That Doubled My Deep Work in 2026",
-      niche: "Productivity & Tech",
-      platform: "youtube",
-      contentType: "video",
-      status: "draft",
-      createdAt: "Oct 19, 2026",
-      idea: "How small daily habits compound into massive creative output.",
-    },
-    {
-      id: "p2",
-      title: "Why 90% of Creators Fail on TikTok Within 30 Days",
-      niche: "Content Strategy",
-      platform: "tiktok",
-      contentType: "short",
-      status: "planned",
-      createdAt: "Oct 18, 2026",
-      idea: "The psychological trap of inconsistency and poor 2-second hooks.",
-    },
-    {
-      id: "p3",
-      title: "The Zero-Dollar Solo SaaS Tech Stack Breakdown",
-      niche: "SaaS & Coding",
-      platform: "instagram",
-      contentType: "carousel",
-      status: "published",
-      createdAt: "Oct 15, 2026",
-      idea: "Full guide using Next.js, Supabase free tier, and Ollama.",
-    },
-    {
-      id: "p4",
-      title: "10 AI Prompts That Feel Illegal for Instagram Reels",
-      niche: "AI Tools",
-      platform: "instagram",
-      contentType: "reel",
-      status: "draft",
-      createdAt: "Oct 14, 2026",
-      idea: "High-retention prompts for fast video creation.",
-    },
-    {
-      id: "p5",
-      title: "How I Built an Audience from Zero Without Paid Ads",
-      niche: "Personal Branding",
-      platform: "youtube",
-      contentType: "video",
-      status: "planned",
-      createdAt: "Oct 12, 2026",
-      idea: "Organic distribution framework for modern founders.",
-    },
-  ]);
+  const counts = useMemo(() => {
+    const c: Record<Filter, number> = { all: items.length, youtube: 0, tiktok: 0, instagram: 0 };
+    for (const item of items) for (const p of itemPlatforms(item)) c[p] += 1;
+    return c;
+  }, [items]);
 
-  const filteredProjects = projects.filter((p) => {
-    const matchesSearch =
-      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.niche.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesPlatform =
-      selectedPlatform === "all" || p.platform === selectedPlatform;
-    const matchesStatus =
-      selectedStatus === "all" || p.status === selectedStatus;
-    return matchesSearch && matchesPlatform && matchesStatus;
-  });
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return items.filter(
+      (item) =>
+        (filter === "all" || itemPlatforms(item).includes(filter)) &&
+        (!q || `${item.title} ${item.niche} ${item.source_idea}`.toLowerCase().includes(q))
+    );
+  }, [items, filter, query]);
 
-  const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const handleDelete = (id: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-  };
-
-  const getPlatformIcon = (platform: string) => {
-    switch (platform) {
-      case "youtube":
-        return <YouTubeIcon className="size-4" />;
-      case "tiktok":
-        return <TikTokIcon className="size-4" />;
-      case "instagram":
-        return <InstagramIcon className="size-4" />;
-      default:
-        return null;
+  const onExport = () => {
+    if (!usage?.features.exportLibrary) {
+      openUpgrade(t.app.exportLocked);
+      return;
     }
+    exportCsv(visible);
+  };
+
+  const onDelete = (item: LibraryItem) => {
+    if (window.confirm(t.app.confirmDelete)) deleteProject.mutate(item.id);
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">
-            {t.nav.library}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage, organize, edit, and repurpose your saved content drafts
-          </p>
+      {/* Toolbar */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <PillTabs
+          aria-label={t.studio.selectPlatform}
+          value={filter}
+          onValueChange={setFilter}
+          options={[
+            { value: "all", label: t.app.all ?? "All", count: counts.all },
+            ...(["youtube", "tiktok", "instagram"] as const).map((p) => ({
+              value: p,
+              label: PLATFORM_NAMES[p],
+              count: counts[p],
+            })),
+          ]}
+        />
+        <div className="flex flex-1 items-center gap-2">
+          <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full bg-card px-4 shadow-card">
+            <Search className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t.app.searchLibrary}
+              aria-label={t.app.searchLibrary}
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={onExport}
+            className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full bg-card px-4 text-sm font-medium shadow-card transition-colors hover:bg-muted"
+          >
+            {usage?.features.exportLibrary ? <Download className="size-4" /> : <Lock className="size-4" />}
+            <span className="hidden sm:inline">{t.app.exportCsv}</span>
+          </button>
         </div>
-
-        <Link href="/dashboard/studio">
-          <Button className="bg-gradient-to-r from-violet-600 via-indigo-600 to-pink-500 hover:opacity-95 text-white font-semibold cursor-pointer">
-            <Plus className="size-4 mr-2" />
-            <span>Create Draft</span>
-          </Button>
-        </Link>
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by title, topic, or niche..."
-            className="ps-9 h-10 text-sm"
-          />
-        </div>
+      {error && (
+        <p role="alert" className="rounded-xl bg-negative-soft p-4 text-sm text-negative">
+          {error.message}
+        </p>
+      )}
 
-        {/* Platform filter tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
-          {[
-            { id: "all", label: "All Platforms" },
-            { id: "youtube", label: "YouTube" },
-            { id: "tiktok", label: "TikTok" },
-            { id: "instagram", label: "Instagram" },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setSelectedPlatform(item.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                selectedPlatform === item.id
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              {item.label}
-            </button>
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-80 animate-pulse rounded-xl bg-card shadow-card" />
           ))}
         </div>
-      </div>
-
-      {/* Projects List */}
-      <div className="space-y-3">
-        {filteredProjects.length === 0 ? (
-          <Card className="border-dashed border-2 border-border p-12 text-center">
-            <FolderOpen className="size-10 text-muted-foreground mx-auto mb-3" />
-            <h3 className="text-base font-bold">No content projects found</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Try adjusting your search terms or generate new content in AI Studio.
-            </p>
-          </Card>
-        ) : (
-          filteredProjects.map((project) => (
-            <div
-              key={project.id}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition"
-            >
-              <div className="flex items-start gap-3.5">
-                <div className="size-10 rounded-xl bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                  {getPlatformIcon(project.platform)}
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold hover:text-primary cursor-pointer line-clamp-1">
-                      {project.title}
-                    </h3>
-                    <Badge
-                      variant={
-                        project.status === "published"
-                          ? "default"
-                          : project.status === "planned"
-                          ? "secondary"
-                          : "outline"
-                      }
-                      className="text-[10px] capitalize font-medium"
-                    >
-                      {project.status}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground/80">
-                      {project.niche}
-                    </span>
-                    <span>•</span>
-                    <span className="capitalize">{project.contentType}</span>
-                    <span>•</span>
-                    <span>{project.createdAt}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-2 self-end sm:self-center">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleCopy(project.id, project.title)}
-                  className="h-8 text-xs cursor-pointer gap-1.5"
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center gap-4 rounded-xl bg-card p-12 text-center shadow-card">
+          <p className="text-muted-foreground">{t.app.emptyLibrary}</p>
+          <Link href="/dashboard/studio" className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground">
+            {t.app.openStudio}
+          </Link>
+        </div>
+      ) : visible.length === 0 ? (
+        <p className="rounded-xl bg-card p-8 text-center text-sm text-muted-foreground shadow-card">{t.app.noResults}</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {visible.map((item) => {
+            const platforms = itemPlatforms(item);
+            const main = platforms[0] ?? "youtube";
+            const formats = item.content_variants.length;
+            return (
+              <article key={item.id} className="flex flex-col gap-4 rounded-xl bg-card p-3 shadow-card">
+                {/* Tinted header, like the property photos in the reference */}
+                <button
+                  type="button"
+                  onClick={() => setViewing(item)}
+                  aria-label={`${t.app.view}: ${item.title}`}
+                  className={cn("relative grid h-32 cursor-pointer place-items-center overflow-hidden rounded-lg bg-gradient-to-br", PLATFORM_TINT[main])}
                 >
-                  {copiedId === project.id ? (
-                    <>
-                      <Check className="size-3 text-emerald-500" />
-                      <span>Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="size-3" />
-                      <span>Copy</span>
-                    </>
-                  )}
-                </Button>
+                  <span className="flex gap-2">
+                    {platforms.map((p) => (
+                      <span key={p} className="grid size-12 place-items-center rounded-2xl bg-card/80 shadow-card backdrop-blur">
+                        <PlatformIcon platform={p} className="size-6" />
+                      </span>
+                    ))}
+                  </span>
+                  <span className={cn("absolute top-3 end-3 rounded-full px-2.5 py-1 text-[11px] font-semibold", STATUS_STYLE[item.status])}>
+                    {statusLabel(item.status, t)}
+                  </span>
+                </button>
 
-                <Link
-                  href={`/dashboard/studio?platform=${project.platform}&idea=${encodeURIComponent(
-                    project.title
-                  )}`}
-                >
-                  <Button
-                    size="sm"
-                    className="h-8 text-xs cursor-pointer bg-primary text-primary-foreground"
+                <div className="flex items-start gap-3 px-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="line-clamp-2 font-bold leading-snug">{item.title}</h3>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {item.niche} · {formatDate(item.created_at, language)}
+                    </p>
+                  </div>
+                  <RingGauge value={readiness(item)} size={52} thickness={6} aria-label={t.app.completeness} />
+                </div>
+
+                <dl className="grid grid-cols-2 gap-2 px-2 text-center">
+                  <div className="rounded-lg bg-muted px-1 py-2">
+                    <dt className="text-[10px] text-muted-foreground">{t.app.formatLabel}</dt>
+                    <dd className="text-xs font-semibold">{formats === 1 ? t.app.format : fmt(t.app.formats, { n: formats })}</dd>
+                  </div>
+                  <div className="rounded-lg bg-muted px-1 py-2">
+                    <dt className="text-[10px] text-muted-foreground">{t.app.toneLabel}</dt>
+                    <dd className="truncate text-xs font-semibold capitalize">{item.tone}</dd>
+                  </div>
+                </dl>
+
+                <label className="mx-2 flex items-center justify-between gap-2 rounded-lg bg-muted px-3 py-2">
+                  <span className="text-[11px] text-muted-foreground">{t.app.statusLabel}</span>
+                  <select
+                    value={item.status}
+                    onChange={(e) => updateProject.mutate({ id: item.id, status: e.target.value as ProjectStatus })}
+                    className="cursor-pointer bg-transparent text-end text-xs font-semibold outline-none"
                   >
-                    Open in Studio
-                  </Button>
-                </Link>
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {statusLabel(s, t)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger className="size-8 rounded-lg flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer">
-                    <MoreVertical className="size-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-40 p-1">
-                    <DropdownMenuItem
-                      onClick={() => handleDelete(project.id)}
-                      className="flex items-center gap-2 text-xs text-destructive focus:text-destructive cursor-pointer"
-                    >
-                      <Trash2 className="size-3.5" />
-                      <span>Delete draft</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+                <div className="mt-auto flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openCoach(fmt(t.app.askCoachPrompt, { title: item.title }), { projectId: item.id, title: item.title })}
+                    className="inline-flex h-10 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-border text-xs font-semibold transition-colors hover:bg-muted"
+                  >
+                    <Sparkles className="size-3.5" />
+                    {t.app.askCoachAbout}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewing(item)}
+                    aria-label={t.app.view}
+                    className="grid size-10 cursor-pointer place-items-center rounded-full border border-border transition-colors hover:bg-muted"
+                  >
+                    <Eye className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(item)}
+                    aria-label={t.app.delete}
+                    className="grid size-10 cursor-pointer place-items-center rounded-full border border-border text-negative transition-colors hover:bg-negative-soft"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      <ContentViewer item={viewing} onClose={() => setViewing(null)} />
     </div>
+  );
+}
+
+function ContentViewer({ item, onClose }: { item: LibraryItem | null; onClose: () => void }) {
+  const { t } = useLanguage();
+  const [tab, setTab] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const variant = item?.content_variants[Math.min(tab, (item?.content_variants.length ?? 1) - 1)];
+
+  const copy = async () => {
+    if (!variant) return;
+    await navigator.clipboard.writeText(contentToText(variant.output_json, t.app));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <DialogPrimitive.Root
+      open={item !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+          setTab(0);
+        }
+      }}
+    >
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/30 transition-opacity data-ending-style:opacity-0 data-starting-style:opacity-0" />
+        <DialogPrimitive.Popup className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(40rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-card text-card-foreground shadow-float outline-none transition-[scale,opacity] data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0">
+          {item && (
+            <>
+              <header className="flex items-start gap-3 p-5 pb-3">
+                <DialogPrimitive.Title className="min-w-0 flex-1 text-lg font-bold leading-snug">{item.title}</DialogPrimitive.Title>
+                <button
+                  type="button"
+                  onClick={copy}
+                  aria-label={t.app.copy}
+                  className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full bg-muted transition-colors hover:bg-accent"
+                >
+                  {copied ? <Check className="size-4 text-positive" /> : <Copy className="size-4" />}
+                </button>
+                <DialogPrimitive.Close
+                  aria-label={t.shell.close}
+                  className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full bg-muted transition-colors hover:bg-accent"
+                >
+                  <X className="size-4" />
+                </DialogPrimitive.Close>
+              </header>
+              {item.content_variants.length > 1 && (
+                <div className="px-5 pb-2">
+                  <PillTabs
+                    size="sm"
+                    value={String(tab)}
+                    onValueChange={(v) => setTab(Number(v))}
+                    className="bg-muted shadow-none"
+                    options={item.content_variants.map((v, i) => ({ value: String(i), label: PLATFORM_NAMES[v.platform] }))}
+                  />
+                </div>
+              )}
+              <div className="overflow-y-auto px-5 pb-5">{variant && <ContentPreview content={variant.output_json} labels={t.app} />}</div>
+            </>
+          )}
+        </DialogPrimitive.Popup>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

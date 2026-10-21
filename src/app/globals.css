@@ -41,6 +41,7 @@
   --color-card: var(--card);
   /* Sage accent and value tints */
   --color-sage: var(--sage);
+  --color-chart-mark: var(--chart-mark);
   --color-sage-foreground: var(--sage-foreground);
   --color-sage-soft: var(--sage-soft);
   --color-sage-softer: var(--sage-softer);
@@ -86,6 +87,7 @@
   --ring: #5e8b6f;
 
   --sage: #5e8b6f;
+  --chart-mark: #3f8a5c; /* validated for chart marks on --card (dataviz) */
   --sage-foreground: #ffffff;
   --sage-soft: #d9e7dd;
   --sage-softer: #edf3ee;
@@ -140,6 +142,7 @@
   --ring: #82ab91;
 
   --sage: #82ab91;
+  --chart-mark: #509f6e;
   --sage-foreground: #10140f;
   --sage-soft: #2b3b31;
   --sage-softer: #202a24;

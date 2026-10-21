@@ -1,234 +1,190 @@
 "use client";
 
-import React, { useState } from "react";
-import {
-  BarChart3,
-  TrendingUp,
-  Eye,
-  Heart,
-  Share2,
-  Bookmark,
-  Sparkles,
-  ArrowUpRight,
-  Lightbulb,
-} from "lucide-react";
-import { YouTubeIcon, TikTokIcon, InstagramIcon } from "@/components/icons";
+import React, { useMemo } from "react";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CalendarDays, Info, Wand2, Zap } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/provider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { fmt, formatDate, toIsoDate } from "@/lib/i18n/format";
+import { useUsageHistory, type UsageEvent } from "@/lib/queries/hooks";
+import { PLATFORM_NAMES, PlatformIcon } from "@/lib/content";
+import { StatTile } from "@/components/dashboard/stat-tile";
+import type { SocialPlatform, UsageKind } from "@/types";
+
+const DAYS = 30;
+
+function lastDays(events: UsageEvent[], days: number) {
+  const today = new Date();
+  const buckets = Array.from({ length: days }, (_, i) => {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (days - 1 - i));
+    return { date: toIsoDate(d), credits: 0 };
+  });
+  const index = new Map(buckets.map((b, i) => [b.date, i]));
+  for (const e of events) {
+    const i = index.get(toIsoDate(new Date(e.created_at)));
+    if (i !== undefined) buckets[i]!.credits += e.credits_used;
+  }
+  return buckets;
+}
+
+/** Labelled horizontal bars for a single measure across a few categories */
+function BreakdownBars({ rows }: { rows: { key: string; label: React.ReactNode; value: number }[] }) {
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return (
+    <ul className="space-y-4">
+      {rows.map((r) => (
+        <li key={r.key} className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <span className="flex items-center gap-2 font-medium">{r.label}</span>
+            <span className="font-semibold tabular-nums">{r.value}</span>
+          </div>
+          <div className="h-2 rounded-full bg-muted">
+            <div
+              className="h-2 rounded-full bg-chart-mark transition-[width] duration-500"
+              style={{ width: `${(r.value / max) * 100}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function AnalyticsPage() {
   const { t, language } = useLanguage();
-  const [platformFilter, setPlatformFilter] = useState("all");
+  const { data: events = [], isLoading } = useUsageHistory();
 
-  const platformStats = [
-    {
-      platform: "youtube",
-      name: "YouTube Channel",
-      icon: YouTubeIcon,
-      views: "142.8K",
-      viewsGrowth: "+24.5%",
-      ctr: "7.8%",
-      retention: "54%",
-      topFormat: "Long-form Tutorials",
-    },
-    {
-      platform: "tiktok",
-      name: "TikTok Account",
-      icon: TikTokIcon,
-      views: "389.2K",
-      viewsGrowth: "+62.1%",
-      ctr: "12.4%",
-      retention: "68%",
-      topFormat: "Viral Problem-Hook",
-    },
-    {
-      platform: "instagram",
-      name: "Instagram Professional",
-      icon: InstagramIcon,
-      views: "89.4K",
-      viewsGrowth: "+18.3%",
-      ctr: "9.1%",
-      retention: "61%",
-      topFormat: "Educational Carousels",
-    },
-  ];
+  const daily = useMemo(() => lastDays(events, DAYS), [events]);
+
+  const summary = useMemo(() => {
+    const byPlatform: Record<SocialPlatform, number> = { youtube: 0, tiktok: 0, instagram: 0 };
+    const byKind: Record<UsageKind, number> = { generation: 0, repurpose: 0, assistant: 0 };
+    let total = 0;
+    for (const e of events) {
+      total += e.credits_used;
+      byKind[e.kind] += e.kind === "repurpose" ? 1 : e.credits_used;
+      if (e.platform in byPlatform) byPlatform[e.platform as SocialPlatform] += 1;
+      // A repurpose produces one piece for every platform
+      if (e.kind === "repurpose") for (const p of Object.keys(byPlatform) as SocialPlatform[]) byPlatform[p] += 1;
+    }
+    const busiest = [...daily].sort((a, b) => b.credits - a.credits)[0];
+    return { byPlatform, byKind, total, busiest: busiest && busiest.credits > 0 ? busiest : null };
+  }, [events, daily]);
+
+  if (!isLoading && events.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-xl bg-card p-12 text-center shadow-card">
+        <p className="text-muted-foreground">{t.app.noUsage}</p>
+      </div>
+    );
+  }
+
+  const shortDate = (iso: string) => formatDate(`${iso}T00:00:00`, language, { day: "numeric", month: "short" });
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">
-            {t.nav.analytics}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Compare retention, engagement, and reach metrics across connected channels
-          </p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatTile icon={Zap} label={t.app.totalCredits90 ?? ""} value={summary.total} />
+        <StatTile icon={Wand2} label={t.app.kindGeneration ?? ""} value={summary.byKind.generation} />
+        <StatTile
+          icon={CalendarDays}
+          label={t.app.busiestDay ?? ""}
+          value={summary.busiest ? shortDate(summary.busiest.date) : "—"}
+          hint={summary.busiest ? fmt(t.app.creditsN, { n: summary.busiest.credits }) : undefined}
+        />
+      </div>
+
+      {/* Single series: the title names it, so no legend */}
+      <section className="rounded-xl bg-card p-5 shadow-card sm:p-6">
+        <h3 className="mb-4 text-lg font-bold">{t.app.creditsLast30}</h3>
+        <div className="h-64" dir="ltr">
+          {isLoading ? (
+            <div className="h-full animate-pulse rounded-lg bg-muted" />
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={daily} margin={{ top: 4, right: 4, bottom: 0, left: -20 }} barCategoryGap={2}>
+                <CartesianGrid vertical={false} stroke="var(--border)" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={shortDate}
+                  interval={6}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                />
+                <Tooltip
+                  cursor={{ fill: "var(--muted)" }}
+                  content={({ active, payload }) => {
+                    const point = payload?.[0]?.payload as { date: string; credits: number } | undefined;
+                    if (!active || !point) return null;
+                    return (
+                      <div className="rounded-lg bg-popover px-3 py-2 text-xs text-popover-foreground shadow-float">
+                        <p className="text-muted-foreground">{shortDate(point.date)}</p>
+                        <p className="font-semibold tabular-nums">{fmt(t.app.creditsN, { n: point.credits })}</p>
+                      </div>
+                    );
+                  }}
+                />
+                <Bar dataKey="credits" fill="var(--chart-mark)" radius={[4, 4, 0, 0]} maxBarSize={18} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
+        {/* Table view of the same data for screen readers and exact values */}
+        <details className="mt-3 text-sm">
+          <summary className="cursor-pointer text-xs text-muted-foreground">{t.app.table}</summary>
+          <table className="mt-2 w-full text-xs">
+            <tbody>
+              {daily
+                .filter((d) => d.credits > 0)
+                .map((d) => (
+                  <tr key={d.date} className="border-b border-border">
+                    <td className="py-1">{shortDate(d.date)}</td>
+                    <td className="py-1 text-end tabular-nums">{d.credits}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </details>
+      </section>
 
-        <Badge variant="outline" className="text-xs px-2.5 py-1 text-emerald-600 bg-emerald-500/10 border-emerald-500/30">
-          ● Data Updated 2 hrs ago
-        </Badge>
+      <div className="grid gap-4 md:grid-cols-2">
+        <section className="rounded-xl bg-card p-5 shadow-card sm:p-6">
+          <h3 className="mb-4 text-lg font-bold">{t.app.byPlatform}</h3>
+          <BreakdownBars
+            rows={(Object.keys(summary.byPlatform) as SocialPlatform[]).map((p) => ({
+              key: p,
+              label: (
+                <>
+                  <PlatformIcon platform={p} className="size-4" />
+                  {PLATFORM_NAMES[p]}
+                </>
+              ),
+              value: summary.byPlatform[p],
+            }))}
+          />
+        </section>
+        <section className="rounded-xl bg-card p-5 shadow-card sm:p-6">
+          <h3 className="mb-4 text-lg font-bold">{t.app.byAction}</h3>
+          <BreakdownBars
+            rows={[
+              { key: "generation", label: t.app.kindGeneration, value: summary.byKind.generation },
+              { key: "repurpose", label: t.app.kindRepurpose, value: summary.byKind.repurpose },
+              { key: "assistant", label: t.app.kindAssistant, value: summary.byKind.assistant },
+            ]}
+          />
+        </section>
       </div>
 
-      {/* Aggregate Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase">
-              Total Cross-Platform Views
-            </CardTitle>
-            <Eye className="size-4 text-violet-500" />
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <div className="text-2xl font-extrabold">621.4K</div>
-            <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-              <TrendingUp className="size-3.5" />
-              <span>+38.2% vs last month</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase">
-              Average 3-Sec Retention
-            </CardTitle>
-            <TrendingUp className="size-4 text-pink-500" />
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <div className="text-2xl font-extrabold">64.2%</div>
-            <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-              <TrendingUp className="size-3.5" />
-              <span>+14.5% using AI hooks</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase">
-              Saves & Bookmarks
-            </CardTitle>
-            <Bookmark className="size-4 text-amber-500" />
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <div className="text-2xl font-extrabold">12.8K</div>
-            <p className="text-xs text-muted-foreground">High-intent intent signal</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase">
-              Shares
-            </CardTitle>
-            <Share2 className="size-4 text-indigo-500" />
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <div className="text-2xl font-extrabold">8.4K</div>
-            <p className="text-xs text-muted-foreground">Organic virality driver</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Platform Breakdown Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {platformStats.map((p) => {
-          const Icon = p.icon;
-          return (
-            <Card key={p.platform} className="border-border bg-card">
-              <CardContent className="p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                      <Icon className="size-4" />
-                    </div>
-                    <h3 className="text-sm font-bold">{p.name}</h3>
-                  </div>
-                  <Badge variant="outline" className="text-xs text-emerald-600">
-                    {p.viewsGrowth}
-                  </Badge>
-                </div>
-
-                <div className="space-y-2 pt-2 border-t border-border">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Estimated Views:</span>
-                    <span className="font-bold">{p.views}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Click-Through Rate (CTR):</span>
-                    <span className="font-bold">{p.ctr}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Audience Retention:</span>
-                    <span className="font-bold">{p.retention}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Top Performing Format:</span>
-                    <span className="font-semibold text-primary">{p.topFormat}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Growth Coach Experiments Section */}
-      <Card className="border-border/80 bg-gradient-to-br from-indigo-950/20 via-background to-violet-950/20">
-        <CardContent className="p-6 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <div className="size-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center">
-              <Lightbulb className="size-4" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold">Growth Coach Experiments for You</h2>
-              <p className="text-xs text-muted-foreground">
-                Actionable experiments derived from your recent content performance
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            <div className="p-4 rounded-xl border border-border bg-card/60 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-violet-500 uppercase">
-                  Experiment #1 · TikTok
-                </span>
-                <Badge variant="outline" className="text-[10px]">
-                  High Impact
-                </Badge>
-              </div>
-              <p className="text-xs font-semibold">
-                Test 2-Second Question Hooks vs Statement Hooks
-              </p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Your question hooks averaged 68% 3-sec retention compared to 49% for statement hooks. Double down on provocative questions.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-xl border border-border bg-card/60 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-pink-500 uppercase">
-                  Experiment #2 · Instagram
-                </span>
-                <Badge variant="outline" className="text-[10px]">
-                  Viral Reach
-                </Badge>
-              </div>
-              <p className="text-xs font-semibold">
-                7-Slide Carousels with Summary Cheat Sheet
-              </p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Carousels with a dedicated summary slide received 3.1x more bookmarks and saves than 4-slide carousels.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Info className="size-4 shrink-0" />
+        {t.app.analyticsNote}
+      </p>
     </div>
   );
 }

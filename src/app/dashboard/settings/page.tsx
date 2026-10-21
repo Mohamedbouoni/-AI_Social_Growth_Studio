@@ -23,6 +23,34 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Link from "next/link";
+import { fmt, formatDate } from "@/lib/i18n/format";
+import { useSessionProfile, useUsage } from "@/lib/queries/hooks";
+import { planLabel } from "@/components/billing/plan-cards";
+import { RingGauge } from "@/components/dashboard/ring-gauge";
+
+function SubscriptionSummary() {
+  const { t, language } = useLanguage();
+  const { data: usage } = useUsage();
+  if (!usage) return <div className="h-32 animate-pulse rounded-xl bg-card shadow-card" />;
+  return (
+    <div className="flex flex-col gap-5 rounded-xl bg-card p-6 shadow-card sm:flex-row sm:items-center">
+      <RingGauge value={(usage.credits.used / Math.max(1, usage.credits.limit)) * 100} caption={t.app.creditsUsed} aria-label={t.app.creditUsage} />
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="text-sm text-muted-foreground">{t.app.yourPlan}</p>
+        <p className="text-xl font-bold">{planLabel(usage.plan, t)}</p>
+        <p className="text-sm text-muted-foreground">
+          {usage.passEnd
+            ? fmt(t.app.activeUntil, { date: formatDate(usage.passEnd, language) })
+            : fmt(t.app.resetsOn, { date: formatDate(usage.cycle.end, language) })}
+        </p>
+      </div>
+      <Link href="/dashboard/billing" className="rounded-full bg-primary px-5 py-2.5 text-center text-sm font-semibold text-primary-foreground">
+        {usage.plan === "free" ? t.app.seePlans : t.shell.billing}
+      </Link>
+    </div>
+  );
+}
 
 function SettingsContent() {
   const searchParams = useSearchParams();
@@ -31,8 +59,10 @@ function SettingsContent() {
   const { t, language, setLanguage } = useLanguage();
 
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [displayName, setDisplayName] = useState("Mohamed Bouoni");
-  const [email, setEmail] = useState("mohamed.bouoni@horizon-tech.tn");
+  const { data: profile } = useSessionProfile();
+  const [displayNameDraft, setDisplayName] = useState<string | null>(null);
+  const displayName = displayNameDraft ?? profile?.name ?? "";
+  const email = profile?.email ?? "";
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // Social account connection states
@@ -250,123 +280,8 @@ function SettingsContent() {
 
         {/* 3. Subscription & Plan Tab */}
         <TabsContent value="subscription" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Free Plan */}
-            <Card className="border-border bg-card relative">
-              <CardContent className="p-6 space-y-4">
-                <div className="space-y-1">
-                  <Badge variant="outline" className="text-xs">
-                    Current Plan
-                  </Badge>
-                  <h3 className="text-lg font-bold">Free Creator</h3>
-                  <div className="text-2xl font-extrabold">€0</div>
-                </div>
-
-                <ul className="text-xs space-y-2 text-muted-foreground">
-                  <li className="flex items-center gap-2 text-foreground">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>10 AI generations / month</span>
-                  </li>
-                  <li className="flex items-center gap-2 text-foreground">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>YouTube, TikTok & Instagram schemas</span>
-                  </li>
-                  <li className="flex items-center gap-2 text-foreground">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>English & Arabic output</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span>Basic library & calendar</span>
-                  </li>
-                </ul>
-
-                <Button
-                  disabled
-                  variant="outline"
-                  className="w-full text-xs font-semibold cursor-not-allowed"
-                >
-                  Active
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Creator Plan */}
-            <Card className="border-violet-500/50 bg-gradient-to-b from-violet-500/5 to-transparent relative shadow-md">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <Badge className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-[10px] uppercase">
-                  Most Popular
-                </Badge>
-              </div>
-              <CardContent className="p-6 space-y-4">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-bold">Creator</h3>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-extrabold">€9</span>
-                    <span className="text-xs text-muted-foreground">/month</span>
-                  </div>
-                </div>
-
-                <ul className="text-xs space-y-2 text-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>100 AI generations / month</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>All 3 platforms supported</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>Viral Hooks & Carousel Slides</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>Unlimited saved drafts</span>
-                  </li>
-                </ul>
-
-                <Button className="w-full text-xs font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-90 text-white cursor-pointer shadow-md shadow-indigo-500/20">
-                  Upgrade to Creator
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Growth Plan */}
-            <Card className="border-border bg-card">
-              <CardContent className="p-6 space-y-4">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-bold">Growth</h3>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-extrabold">€19</span>
-                    <span className="text-xs text-muted-foreground">/month</span>
-                  </div>
-                </div>
-
-                <ul className="text-xs space-y-2 text-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>500 AI generations / month</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>Priority model inference</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>Advanced Growth Coach</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="size-3.5 text-emerald-500" />
-                    <span>Multi-channel auto-repurposing</span>
-                  </li>
-                </ul>
-
-                <Button variant="outline" className="w-full text-xs font-semibold cursor-pointer">
-                  Upgrade to Growth
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+          {/* Plans and payments live on the Billing page (Konnect checkout) */}
+          <SubscriptionSummary />
         </TabsContent>
 
         {/* 4. Security Tab */}

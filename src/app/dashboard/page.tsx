@@ -1,419 +1,267 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Sparkles,
-  Zap,
-  ArrowRight,
-  ArrowUpRight,
-  Clock,
-  TrendingUp,
-  FolderOpen,
-  Plus,
-  CheckCircle2,
-  AlertCircle,
-  Lightbulb,
-} from "lucide-react";
-import { YouTubeIcon, TikTokIcon, InstagramIcon } from "@/components/icons";
+import { ArrowUpRight, CalendarDays, FolderOpen, Sparkles, Wand2, Zap } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/provider";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { fmt, formatDate } from "@/lib/i18n/format";
+import { useLibrary, useSessionProfile, useUsage, useUsageHistory } from "@/lib/queries/hooks";
+import { PLATFORM_NAMES, PlatformIcon, STATUS_STYLE, itemPlatforms, statusLabel } from "@/lib/content";
+import { StatTile } from "@/components/dashboard/stat-tile";
+import { RingGauge } from "@/components/dashboard/ring-gauge";
+import { PillTabs } from "@/components/dashboard/pill-tabs";
+import { planLabel } from "@/components/billing/plan-cards";
+import { useUpgrade } from "@/components/billing/upgrade-provider";
+import { cn } from "@/lib/utils";
+import type { SocialPlatform } from "@/types";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Credits spent per day over the last `days` days, oldest first */
+function dailyCredits(events: { created_at: string; credits_used: number }[], days: number): number[] {
+  const buckets = new Array<number>(days).fill(0);
+  const start = Date.now() - days * DAY_MS;
+  for (const e of events) {
+    const index = Math.floor((new Date(e.created_at).getTime() - start) / DAY_MS);
+    if (index >= 0 && index < days) buckets[index]! += e.credits_used;
+  }
+  return buckets;
+}
 
 export default function DashboardOverviewPage() {
   const router = useRouter();
-  const { t, language, dir } = useLanguage();
+  const { t, language } = useLanguage();
+  const { openUpgrade } = useUpgrade();
+  const { data: usage } = useUsage();
+  const { data: history = [] } = useUsageHistory();
+  const { data: library = [], isLoading: libraryLoading } = useLibrary({ limit: 200 });
+  const { data: profile } = useSessionProfile();
 
-  const [quickIdea, setQuickIdea] = useState("");
-  const [selectedPlatform, setSelectedPlatform] = useState<
-    "youtube" | "tiktok" | "instagram"
-  >("youtube");
+  const [idea, setIdea] = useState("");
+  const [platform, setPlatform] = useState<SocialPlatform>("youtube");
 
-  const handleQuickLaunch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickIdea.trim()) return;
-    router.push(
-      `/dashboard/studio?platform=${selectedPlatform}&idea=${encodeURIComponent(
-        quickIdea
-      )}`
-    );
-  };
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const cycleStart = usage ? new Date(usage.cycle.start).getTime() : 0;
+    return {
+      generations: history.filter(
+        (e) => e.kind !== "assistant" && new Date(e.created_at).getTime() >= cycleStart
+      ).length,
+      drafts: library.filter((i) => i.status === "draft").length,
+      scheduled: library.filter((i) => i.planned_date && i.planned_date >= today).length,
+      platforms: new Set(library.flatMap(itemPlatforms)).size,
+      spark: dailyCredits(history, 14),
+    };
+  }, [history, library, usage]);
 
-  // Mock initial projects for demonstration
-  const recentProjects = [
-    {
-      id: "proj-1",
-      title: "5 Micro-Habits That Doubled My Deep Work in 2026",
-      niche: "Productivity & Tech",
-      platform: "youtube",
-      contentType: "video",
-      status: "draft",
-      date: "2 hours ago",
-    },
-    {
-      id: "proj-2",
-      title: "Why 90% of Creators Fail on TikTok Within 30 Days",
-      niche: "Content Strategy",
-      platform: "tiktok",
-      contentType: "short",
-      status: "planned",
-      date: "Yesterday",
-    },
-    {
-      id: "proj-3",
-      title: "The Zero-Dollar Solo SaaS Tech Stack Breakdown",
-      niche: "SaaS & Coding",
-      platform: "instagram",
-      contentType: "carousel",
-      status: "draft",
-      date: "3 days ago",
-    },
-  ];
+  const usedPercent = usage ? (usage.credits.used / Math.max(1, usage.credits.limit)) * 100 : 0;
+  const initials = (profile?.name ?? "C")
+    .split(/\s+/)
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
-  const getPlatformIcon = (platform: string) => {
-    switch (platform) {
-      case "youtube":
-        return <YouTubeIcon className="size-4" />;
-      case "tiktok":
-        return <TikTokIcon className="size-4" />;
-      case "instagram":
-        return <InstagramIcon className="size-4" />;
-      default:
-        return <Sparkles className="size-4 text-violet-500" />;
-    }
+  const launch = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!idea.trim()) return;
+    router.push(`/dashboard/studio?platform=${platform}&idea=${encodeURIComponent(idea.trim())}`);
   };
 
   return (
-    <div className="space-y-8">
-      {/* Top Greeting & Action bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            {t.dashboard.greeting} 👋
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t.dashboard.subtitle}
-          </p>
-        </div>
+    <div className="space-y-6">
+      {profile && (
+        <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
+          {fmt(t.app.greeting, { name: profile.name.split(" ")[0] ?? profile.name })}
+        </h2>
+      )}
 
-        <Link href="/dashboard/studio">
-          <Button className="bg-gradient-to-r from-violet-600 via-indigo-600 to-pink-500 hover:opacity-95 text-white font-semibold shadow-md shadow-indigo-500/20 cursor-pointer">
-            <Plus className="size-4 mr-2" />
-            <span>New Generation</span>
-          </Button>
-        </Link>
+      {/* KPI tiles */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          icon={Zap}
+          label={t.app.creditsLeft ?? ""}
+          value={usage ? usage.credits.remaining : "—"}
+          hint={usage ? fmt(t.app.creditsOf, { limit: usage.credits.limit }) : undefined}
+          sparkline={stats.spark}
+        />
+        <StatTile icon={Wand2} label={t.app.generations ?? ""} value={stats.generations} hint={t.app.thisCycle} />
+        <StatTile icon={FolderOpen} label={t.app.savedDrafts ?? ""} value={stats.drafts} />
+        <StatTile icon={CalendarDays} label={t.app.scheduled ?? ""} value={stats.scheduled} hint={t.app.upcoming} />
       </div>
 
-      {/* Quick Launchpad Banner */}
-      <div className="relative overflow-hidden rounded-2xl p-6 sm:p-8 bg-gradient-to-br from-indigo-950 via-slate-900 to-violet-950 border border-indigo-900/40 text-white shadow-xl">
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 size-60 rounded-full bg-violet-500/20 blur-3xl pointer-events-none" />
-        <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 backdrop-blur border border-white/10 text-pink-300">
-            <Sparkles className="size-3.5" />
-            <span>Instant Idea Engine</span>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Quick generate */}
+        <form onSubmit={launch} className="flex flex-col gap-4 rounded-xl bg-card p-5 shadow-card sm:p-6 lg:col-span-2">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-full bg-primary text-primary-foreground">
+              <Sparkles className="size-[1.125rem]" />
+            </span>
+            <h3 className="text-lg font-bold">{t.app.quickTitle}</h3>
           </div>
+          <PillTabs
+            size="sm"
+            aria-label={t.studio.selectPlatform}
+            value={platform}
+            onValueChange={setPlatform}
+            className="self-start shadow-none bg-muted"
+            options={(["youtube", "tiktok", "instagram"] as const).map((p) => ({ value: p, label: PLATFORM_NAMES[p] }))}
+          />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={idea}
+              onChange={(e) => setIdea(e.target.value)}
+              placeholder={t.app.quickPlaceholder}
+              aria-label={t.app.quickTitle}
+              maxLength={2000}
+              className="h-12 min-w-0 flex-1 rounded-full bg-muted px-5 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+            <button
+              type="submit"
+              disabled={!idea.trim()}
+              className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Wand2 className="size-4" />
+              {t.app.generate}
+            </button>
+          </div>
+        </form>
 
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
-            {language === "ar"
-              ? "حوّل فكرتك التالية إلى خطافات ونصوص متفجرة فوراً"
-              : "Generate viral content hooks & scripts from your next idea"}
-          </h2>
-
-          <form onSubmit={handleQuickLaunch} className="space-y-3">
-            {/* Platform pills */}
-            <div className="flex flex-wrap gap-2 pt-1">
-              {[
-                { id: "youtube", label: "YouTube", icon: YouTubeIcon },
-                { id: "tiktok", label: "TikTok", icon: TikTokIcon },
-                { id: "instagram", label: "Instagram", icon: InstagramIcon },
-              ].map((p) => {
-                const Icon = p.icon;
-                const isSelected = selectedPlatform === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() =>
-                      setSelectedPlatform(
-                        p.id as "youtube" | "tiktok" | "instagram"
-                      )
-                    }
-                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
-                      isSelected
-                        ? "bg-white text-slate-950 shadow-md font-bold"
-                        : "bg-white/10 text-slate-200 hover:bg-white/20"
-                    }`}
-                  >
-                    <Icon className="size-3.5" />
-                    <span>{p.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Prompt input with generate button */}
-            <div className="flex flex-col sm:flex-row gap-2 pt-1">
-              <Input
-                placeholder={
-                  language === "ar"
-                    ? "اكتب فكرتك هنا (مثلاً: 3 أسرار لزيادة المبيعات بمتجرك)..."
-                    : "Enter an idea (e.g. 3 overlooked habits that 10x developer productivity)..."
-                }
-                value={quickIdea}
-                onChange={(e) => setQuickIdea(e.target.value)}
-                className="bg-white/10 border-white/15 text-white placeholder:text-slate-400 focus-visible:ring-indigo-400 text-sm h-11"
-              />
-              <Button
-                type="submit"
-                className="h-11 px-6 bg-white text-indigo-950 hover:bg-slate-100 font-bold text-sm shrink-0 shadow-lg cursor-pointer"
-              >
-                <span>{language === "ar" ? "ابدأ التوليد" : "Launch Studio"}</span>
-                <ArrowRight className="size-4 ml-2 rtl:rotate-180" />
-              </Button>
-            </div>
-          </form>
+        {/* Profile card */}
+        <div className="flex flex-col items-center gap-3 rounded-xl bg-card p-6 text-center shadow-card">
+          <span className="grid size-16 place-items-center rounded-full bg-sage-soft text-xl font-bold text-sage">
+            {initials}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-bold">{profile?.name ?? "…"}</p>
+            <p className="truncate text-sm text-muted-foreground">{profile?.email}</p>
+          </div>
+          {usage && (
+            <span className="rounded-full bg-sage-softer px-3 py-1 text-xs font-semibold text-sage">
+              {planLabel(usage.plan, t)}
+            </span>
+          )}
+          <dl className="mt-1 grid w-full grid-cols-3 gap-2 text-center">
+            {[
+              { label: t.nav.library, value: library.length },
+              { label: t.app.scheduled, value: stats.scheduled },
+              { label: t.app.platformsLabel, value: stats.platforms },
+            ].map((s) => (
+              <div key={s.label}>
+                <dt className="truncate text-xs text-muted-foreground">{s.label}</dt>
+                <dd className="text-xl font-bold tabular-nums">{s.value}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
 
-      {/* 4 Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Credits remaining */}
-        <Card className="border-border/80 bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t.dashboard.creditsRemaining}
-            </CardTitle>
-            <div className="size-8 rounded-lg bg-violet-500/10 text-violet-600 flex items-center justify-center">
-              <Zap className="size-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-2xl font-bold">7 / 10</div>
-            <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
-                style={{ width: "70%" }}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Resets in 11 days · Free Tier
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Connected accounts */}
-        <Card className="border-border/80 bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t.dashboard.connectedAccounts}
-            </CardTitle>
-            <div className="size-8 rounded-lg bg-pink-500/10 text-pink-600 flex items-center justify-center">
-              <InstagramIcon className="size-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-2xl font-bold">3 Platforms</div>
-            <div className="flex items-center gap-1.5 pt-1">
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 border-emerald-500/40 text-emerald-600 bg-emerald-500/10"
-              >
-                ● YT Ready
-              </Badge>
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 border-emerald-500/40 text-emerald-600 bg-emerald-500/10"
-              >
-                ● TT Ready
-              </Badge>
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 border-emerald-500/40 text-emerald-600 bg-emerald-500/10"
-              >
-                ● IG Ready
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Saved Drafts */}
-        <Card className="border-border/80 bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t.dashboard.savedDrafts}
-            </CardTitle>
-            <div className="size-8 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
-              <FolderOpen className="size-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-2xl font-bold">14 Drafts</div>
-            <p className="text-[11px] text-muted-foreground">
-              Across 3 channels · Ready to publish
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Growth Coach Score */}
-        <Card className="border-border/80 bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Hook Retention Score
-            </CardTitle>
-            <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-              <TrendingUp className="size-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-2xl font-bold text-emerald-600">+42%</div>
-            <p className="text-[11px] text-muted-foreground">
-              Based on structured high-retention frameworks
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Grid: Recent Projects & Growth Coach */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Recent Projects */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FolderOpen className="size-5 text-primary" />
-              <h2 className="text-lg font-bold tracking-tight">
-                {t.dashboard.recentProjects}
-              </h2>
-            </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Recent content */}
+        <section className="rounded-xl bg-card p-5 shadow-card sm:p-6 lg:col-span-2">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-bold">{t.app.recentContent}</h3>
             <Link
               href="/dashboard/library"
-              className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
+              aria-label={t.app.viewAll}
+              className="grid size-9 place-items-center rounded-full bg-muted transition-colors hover:bg-accent"
             >
-              <span>{t.dashboard.viewAll}</span>
-              <ArrowUpRight className="size-3.5" />
+              <ArrowUpRight className="size-4 rtl:-scale-x-100" />
             </Link>
           </div>
 
-          <div className="space-y-3">
-            {recentProjects.map((p) => (
-              <div
-                key={p.id}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition"
+          {libraryLoading ? (
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-14 animate-pulse rounded-xl bg-muted" />
+              ))}
+            </div>
+          ) : library.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <p className="text-sm text-muted-foreground">{t.app.emptyLibrary}</p>
+              <Link
+                href="/dashboard/studio"
+                className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
               >
-                <div className="flex items-start gap-3">
-                  <div className="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                    {getPlatformIcon(p.platform)}
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold leading-tight hover:text-primary cursor-pointer line-clamp-1">
-                      {p.title}
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{p.niche}</span>
-                      <span>•</span>
-                      <span className="capitalize">{p.contentType}</span>
-                      <span>•</span>
-                      <span>{p.date}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-end sm:self-center">
-                  <Badge
-                    variant={p.status === "planned" ? "secondary" : "outline"}
-                    className="text-[10px] capitalize"
-                  >
-                    {p.status}
-                  </Badge>
-                  <Link href={`/dashboard/studio?projectId=${p.id}`}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs h-8 cursor-pointer"
-                    >
-                      Open
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right Col: Growth Coach & Tips */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Lightbulb className="size-5 text-amber-500" />
-            <h2 className="text-lg font-bold tracking-tight">
-              Growth Coach Insight
-            </h2>
-          </div>
-
-          <Card className="border-border/80 bg-gradient-to-br from-card to-muted/40 shadow-sm">
-            <CardContent className="p-5 space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="size-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
-                  <Lightbulb className="size-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold">
-                    {language === "ar"
-                      ? "قاعدة الـ 3 ثوانٍ في تيك توك وريلز"
-                      : "The 3-Second Hook Rule"}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    {language === "ar"
-                      ? "الفيديوهات التي تبدأ بسؤال يتحدى مفهوماً شائعاً تحقق معدل إكمال أعلى بنسبة 42%. جرب صيغة: 'توقف عن فعل هذا إذا كنت تريد...'"
-                      : "Videos starting with a counter-intuitive question or challenge achieve 42% higher completion rates. Try the: 'Stop doing X if you want Y' framework."}
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-border">
-                <Link
-                  href="/dashboard/studio?platform=tiktok&preset=viral-hook"
-                  className="w-full"
-                >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full text-xs font-semibold cursor-pointer justify-between"
-                  >
-                    <span>
-                      {language === "ar"
-                        ? "جرّب صيغة الخطاف الفيروسي"
-                        : "Try Viral Hook Preset"}
-                    </span>
-                    <ArrowRight className="size-3.5 rtl:rotate-180" />
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Social Platform Connection Prompt Card */}
-          <Card className="border-dashed border-border bg-muted/20">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                <Sparkles className="size-3.5 text-violet-500" />
-                <span>Multi-Platform Studio</span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {t.dashboard.connectPlatformCTA}
-              </p>
-              <Link href="/dashboard/settings?tab=connections">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="w-full text-xs font-semibold cursor-pointer"
-                >
-                  Manage Channels
-                </Button>
+                {t.app.openStudio}
               </Link>
-            </CardContent>
-          </Card>
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {library.slice(0, 5).map((item) => {
+                const platforms = itemPlatforms(item);
+                return (
+                  <li key={item.id} className="flex items-center gap-3 py-3">
+                    <span className="w-1 self-stretch rounded-full bg-primary/80" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{item.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDate(item.created_at, language, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                    <span className="flex -space-x-1 rtl:space-x-reverse">
+                      {platforms.map((p) => (
+                        <span key={p} className="grid size-7 place-items-center rounded-full bg-muted ring-2 ring-card">
+                          <PlatformIcon platform={p} className="size-3.5" />
+                        </span>
+                      ))}
+                    </span>
+                    <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", STATUS_STYLE[item.status])}>
+                      {statusLabel(item.status, t)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <div className="grid gap-4">
+          {/* Credit usage gauge */}
+          <section className="flex items-center gap-5 rounded-xl bg-card p-5 shadow-card">
+            <RingGauge value={usedPercent} aria-label={t.app.creditUsage} caption={t.app.creditsUsed} />
+            <div className="min-w-0 space-y-1">
+              <h3 className="font-bold">{t.app.creditUsage}</h3>
+              {usage && (
+                <>
+                  <p className="text-sm tabular-nums">
+                    {usage.credits.used} / {usage.credits.limit}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {usage.passEnd
+                      ? fmt(t.app.activeUntil, { date: formatDate(usage.passEnd, language) })
+                      : fmt(t.app.resetsOn, { date: formatDate(usage.cycle.end, language) })}
+                  </p>
+                </>
+              )}
+            </div>
+          </section>
+
+          {/* Upgrade card (free) or plan status (paid) */}
+          <section className="bg-sage-glow flex flex-col items-center gap-3 rounded-xl p-6 text-center">
+            <span className="grid size-12 place-items-center rounded-full bg-card text-sage shadow-card">
+              <Zap className="size-5" />
+            </span>
+            <h3 className="font-bold">{t.app.upgradeCardTitle}</h3>
+            <p className="text-sm text-muted-foreground">{t.app.upgradeCardBody}</p>
+            {usage?.plan === "free" ? (
+              <button
+                type="button"
+                onClick={() => openUpgrade()}
+                className="cursor-pointer rounded-full bg-sage px-5 py-2.5 text-sm font-semibold text-sage-foreground transition-opacity hover:opacity-90"
+              >
+                {t.app.seePlans}
+              </button>
+            ) : (
+              <Link
+                href="/dashboard/billing"
+                className="rounded-full bg-sage px-5 py-2.5 text-sm font-semibold text-sage-foreground"
+              >
+                {t.shell.billing}
+              </Link>
+            )}
+          </section>
         </div>
       </div>
     </div>
