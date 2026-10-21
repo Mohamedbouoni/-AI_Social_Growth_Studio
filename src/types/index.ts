@@ -113,12 +113,71 @@ export interface Subscription {
   updated_at: string;
 }
 
-// ---------------------------------------------------------------------------
-// Plan limits — generation credits per billing period
-// ---------------------------------------------------------------------------
+export interface Payment {
+  id: string;
+  workspace_id: string;
+  plan: PaidPlan;
+  amount_millimes: number;
+  provider: string;
+  provider_payment_ref: string | null;
+  pay_url: string | null;
+  status: "pending" | "completed" | "failed" | "expired";
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
-export const PLAN_LIMITS: Record<Plan, { generationsPerMonth: number }> = {
-  free: { generationsPerMonth: 10 },
-  creator: { generationsPerMonth: 100 },
-  growth: { generationsPerMonth: 500 },
+// ---------------------------------------------------------------------------
+// Plans — credits per billing cycle, TND prices and feature gates
+// ---------------------------------------------------------------------------
+// Free credits reset each calendar month. Paid plans are prepaid 30-day
+// passes (Konnect has no recurring billing).
+
+export type PaidPlan = Exclude<Plan, "free">;
+export type UsageKind = "generation" | "repurpose" | "assistant";
+
+export interface PlanConfig {
+  credits: number;
+  /** Price in millimes (1 TND = 1000 millimes); 0 for free. */
+  priceMillimes: number;
+  features: {
+    allTones: boolean;
+    qualityModel: boolean;
+    repurpose: boolean;
+    exportLibrary: boolean;
+  };
+}
+
+export const PLAN_DURATION_DAYS = 30;
+
+export const PLANS: Record<Plan, PlanConfig> = {
+  free: {
+    credits: 10,
+    priceMillimes: 0,
+    features: { allTones: false, qualityModel: false, repurpose: false, exportLibrary: false },
+  },
+  creator: {
+    credits: 150,
+    priceMillimes: 19000,
+    features: { allTones: true, qualityModel: true, repurpose: true, exportLibrary: false },
+  },
+  growth: {
+    credits: 600,
+    priceMillimes: 49000,
+    features: { allTones: true, qualityModel: true, repurpose: true, exportLibrary: true },
+  },
 };
+
+/** Tones available on the free plan; the rest unlock with a paid plan. */
+export const FREE_TONES = ["professional", "casual", "educational", "inspirational"] as const;
+
+/** Credits each action costs. */
+export const CREDIT_COST: Record<UsageKind, number> = {
+  generation: 1,
+  repurpose: 3,
+  assistant: 1,
+};
+
+export function isPaidPlan(plan: string): plan is PaidPlan {
+  return plan === "creator" || plan === "growth";
+}

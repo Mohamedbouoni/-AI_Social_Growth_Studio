@@ -7,29 +7,34 @@ import { generationInputSchema } from "./schemas";
 import { getAIProvider } from "./provider-factory";
 import type { ProviderResult } from "./provider";
 import { createAdminClient } from "@/lib/supabase/server";
+import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logging/logger";
-import { PLAN_LIMITS, type Plan } from "@/types";
+import { getEntitlement, type Entitlement } from "@/modules/billing/entitlement";
+import { recordUsageDetails, releaseCredits, reserveCredits } from "@/modules/billing/credits";
+import { saveToLibrary } from "@/modules/library/library-service";
+import { FREE_TONES } from "@/types";
 
 export interface GenerationResult {
   data: GeneratedContent;
+  /** Library project the result was saved to; null if saving failed. */
+  projectId: string | null;
   creditsRemaining: number;
   isCached: boolean;
 }
 
-/**
- * Expected, user-facing failures. The message is safe to return to the client.
- */
-export class GenerationError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-    this.name = "GenerationError";
+/** Throws PLAN_FEATURE when the chosen tone needs a paid plan. */
+export function assertToneAllowed(entitlement: Entitlement, tone: GenerationInput["tone"]) {
+  if (
+    !entitlement.config.features.allTones &&
+    !(FREE_TONES as readonly string[]).includes(tone)
+  ) {
+    throw new AppError(
+      "PLAN_FEATURE",
+      `The "${tone}" tone is available on the Creator and Growth plans.`,
+      403
+    );
   }
 }
-
-type ReservationResult = {
-  status: "reserved" | "duplicate" | "limit_reached";
-  used: number;
-};
 
 export async function generateContentService(
   userId: string,
@@ -41,110 +46,55 @@ export async function generateContentService(
 
   const supabase = createAdminClient();
 
-  // 2. Fetch user's active workspace and plan
-  const { data: workspace, error: workspaceError } = await supabase
-    .from("workspaces")
-    .select("id, plan")
-    .eq("owner_id", userId)
-    .maybeSingle();
+  // 2. Resolve plan, credit cycle and feature gates
+  const entitlement = await getEntitlement(supabase, userId);
+  assertToneAllowed(entitlement, input.tone);
 
-  if (workspaceError) {
-    throw new Error(`Workspace lookup failed: ${workspaceError.message}`);
-  }
-
-  if (!workspace) {
-    throw new GenerationError("No active workspace found for user.", 404);
-  }
-
-  const workspaceId: string = workspace.id;
-  const userPlan: Plan = (workspace.plan as Plan) || "free";
-  const planLimit = PLAN_LIMITS[userPlan]?.generationsPerMonth ?? 10;
   const provider = getAIProvider({
-    tier: userPlan === "free" ? "fast" : "quality",
+    tier: entitlement.config.features.qualityModel ? "quality" : "fast",
     language: input.language,
   });
 
-  // 3. Atomically check quota + idempotency and reserve one credit
-  const { data: reservation, error: reservationError } = await supabase.rpc(
-    "reserve_generation_credit",
-    {
-      p_workspace_id: workspaceId,
-      p_request_id: requestId,
-      p_limit: planLimit,
-      p_model: provider.name,
-      p_platform: input.platform,
-      p_content_type: input.contentType,
-    }
-  );
-
-  if (reservationError) {
-    throw new Error(`Credit reservation failed: ${reservationError.message}`);
-  }
-
-  const { status, used } = reservation as ReservationResult;
-
-  if (status === "duplicate") {
-    // Generated content is not persisted yet, so a replayed request_id can't
-    // be served from cache — reject it instead of charging a second credit.
-    throw new GenerationError(
-      "This request has already been processed. Please submit a new request.",
-      409
-    );
-  }
-
-  if (status === "limit_reached") {
-    throw new GenerationError(
-      `You have reached your monthly generation limit (${planLimit} credits). Please upgrade to Creator or Growth plan to continue.`,
-      403
-    );
-  }
+  // 3. Atomically check quota + idempotency and reserve the credit
+  const used = await reserveCredits(supabase, entitlement, {
+    requestId,
+    kind: "generation",
+    model: provider.name,
+    platform: input.platform,
+    contentType: input.contentType,
+  });
 
   // 4. Invoke AI Provider — release the reserved credit if it fails
   logger.info("Executing generation with provider", {
     providerName: provider.name,
-    workspaceId,
+    workspaceId: entitlement.workspaceId,
   });
 
   let generated: ProviderResult<GeneratedContent>;
   try {
     generated = await provider.generateContent(input);
   } catch (err) {
-    const { error: releaseError } = await supabase
-      .from("generation_usage")
-      .delete()
-      .eq("workspace_id", workspaceId)
-      .eq("request_id", requestId);
-
-    if (releaseError) {
-      logger.error("Failed to release generation credit", {
-        requestId,
-        error: releaseError.message,
-      });
-    }
+    await releaseCredits(supabase, entitlement.workspaceId, requestId);
     throw err;
   }
 
-  // 5. Record which provider actually answered and the tokens it used
-  const { error: usageUpdateError } = await supabase
-    .from("generation_usage")
-    .update({
-      model: generated.providerName,
-      tokens_in: generated.usage.promptCount,
-      tokens_out: generated.usage.completionCount,
-    })
-    .eq("workspace_id", workspaceId)
-    .eq("request_id", requestId);
+  // 5. Record usage details and save to the library
+  await recordUsageDetails(
+    supabase,
+    entitlement.workspaceId,
+    requestId,
+    generated.providerName,
+    generated.usage
+  );
 
-  if (usageUpdateError) {
-    logger.warn("Failed to record generation usage details", {
-      requestId,
-      error: usageUpdateError.message,
-    });
-  }
+  const projectId = await saveToLibrary(supabase, entitlement.workspaceId, input, [
+    { contentType: input.contentType, content: generated.data },
+  ]);
 
   return {
     data: generated.data,
-    creditsRemaining: Math.max(0, planLimit - used),
+    projectId,
+    creditsRemaining: Math.max(0, entitlement.config.credits - used),
     isCached: false,
   };
 }
