@@ -23,3 +23,6 @@ WITH created AS (
 )
 INSERT INTO workspace_members (workspace_id, user_id, role)
 SELECT id, owner_id, 'owner' FROM created;
+
+-- Make the Supabase API (PostgREST) see the new tables immediately
+NOTIFY pgrst, 'reload schema';
