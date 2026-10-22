@@ -13,7 +13,8 @@ export type AppErrorCode =
   | "PLAN_FEATURE"
   | "DUPLICATE_REQUEST"
   | "PAYMENT_PROVIDER"
-  | "SETUP_REQUIRED";
+  | "SETUP_REQUIRED"
+  | "QUOTA_EXCEEDED";
 
 export class AppError extends Error {
   readonly status: number;

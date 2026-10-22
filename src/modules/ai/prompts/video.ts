@@ -34,7 +34,8 @@ You receive the timestamped transcript of a creator's video${frames.length ? " a
 Produce the creator's complete publishing package:
 - Detect the spoken language (including Arabic dialects such as Tunisian Darija) and write ALL creative text (titles, descriptions, hooks, captions, posts) in that same language. Tags may mix in English search terms.
 - Chapters and cue-sheet times MUST come from the transcript timestamps, formatted m:ss.
-- YouTube titles: 40-65 characters, high click-through without misleading clickbait, one per style.
+- YouTube titles: 40-65 characters, high click-through without misleading clickbait, one per style. Include the main search keyword (the first tag) in at least 3 of the 5 titles; no all-caps titles.
+- YouTube SEO: the FIRST tag is the main search keyword people would type. The description's first sentence must contain that keyword, the description must be at least 300 characters, list the chapters as "m:ss Title" lines starting with 0:00, and end with a call to action (subscribe / comment). Give 12-25 tags (broad + specific + spelling variants) and exactly 5 hashtags.
 - Hook score: estimate 0-100 how well the first 10 seconds will hold viewers, judged on the actual opening lines. Be honest; most videos score 40-70. Give concrete reasons and a rewritten, stronger opening line.
 - Cue sheet: practical editing instructions (where to cut dead air, zoom for emphasis, add b-roll, captions or music).
 - Never invent facts, numbers or claims that are not in the video.

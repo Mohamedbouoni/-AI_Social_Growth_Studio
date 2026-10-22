@@ -8,8 +8,9 @@ import { PillTabs } from "@/components/dashboard/pill-tabs";
 import { RingGauge } from "@/components/dashboard/ring-gauge";
 import type { TranscriptSegment, VideoPackage } from "@/modules/ai/video-schemas";
 import { CopyButton } from "./copy-button";
+import { SeoPanel } from "./seo-panel";
 
-type Tab = "youtube" | "shorts" | "social" | "timeline" | "transcript";
+type Tab = "youtube" | "seo" | "shorts" | "social" | "timeline" | "transcript";
 
 function Block({ title, copy, children }: { title: string; copy?: string; children: React.ReactNode }) {
   const { t } = useLanguage();
@@ -117,6 +118,7 @@ export function VideoResults({ pkg, segments, durationSeconds }: VideoResultsPro
         onValueChange={setTab}
         options={[
           { value: "youtube", label: t.app.tabYoutube ?? "" },
+          { value: "seo", label: t.app.tabSeo ?? "" },
           { value: "shorts", label: t.app.tabShorts ?? "" },
           { value: "social", label: t.app.tabSocial ?? "" },
           { value: "timeline", label: t.app.tabTimeline ?? "" },
@@ -153,6 +155,8 @@ export function VideoResults({ pkg, segments, durationSeconds }: VideoResultsPro
           </div>
         </div>
       )}
+
+      {tab === "seo" && <SeoPanel pkg={pkg} />}
 
       {tab === "shorts" && (
         <div className="grid gap-4 lg:grid-cols-2">
