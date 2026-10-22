@@ -92,7 +92,7 @@ const geminiTranscriptSchema = z.object({
 });
 
 async function transcribeWithGemini(chunks: AudioChunk[], apiKey: string): Promise<Transcript> {
-  const model = process.env.GEMINI_MODEL_QUALITY || "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL_QUALITY || "gemini-flash-latest";
   const segments: TranscriptSegment[] = [];
   let language: string | null = null;
   let durationSeconds = 0;

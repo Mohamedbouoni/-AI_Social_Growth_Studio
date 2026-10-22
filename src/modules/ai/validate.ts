@@ -26,6 +26,28 @@ const ARRAY_LIMITS: Record<string, number> = {
 
 const SPLITTABLE_FIELDS = new Set(["tags", "hashtags", "titles"]);
 
+/** Removes commas directly before } or ], leaving string contents untouched. */
+function stripTrailingCommas(json: string): string {
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < json.length; i++) {
+    const ch = json[i]!;
+    if (inString) {
+      out += ch;
+      if (ch === "\\") out += json[++i] ?? "";
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    if (ch === ",") {
+      const next = json.slice(i + 1).match(/^\s*([}\]])/);
+      if (next) continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 export function extractJson(rawText: string): unknown {
   const trimmed = rawText.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -38,7 +60,13 @@ export function extractJson(rawText: string): unknown {
     const start = body.indexOf("{");
     const end = body.lastIndexOf("}");
     if (start === -1 || end <= start) throw new SyntaxError("No JSON object in model output.");
-    return JSON.parse(body.slice(start, end + 1));
+    const object = body.slice(start, end + 1);
+    try {
+      return JSON.parse(object);
+    } catch {
+      // Free models often leave a trailing comma before } or ]
+      return JSON.parse(stripTrailingCommas(object));
+    }
   }
 }
 

@@ -64,7 +64,7 @@ function buildProvider(key: ProviderKey, tier: ModelTier): AIProvider | null {
         name: "gemini",
         baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
         apiKey,
-        model: pickModel(tier, "GEMINI_MODEL_FAST", "GEMINI_MODEL_QUALITY", "gemini-2.5-flash-lite", "gemini-2.5-flash"),
+        model: pickModel(tier, "GEMINI_MODEL_FAST", "GEMINI_MODEL_QUALITY", "gemini-flash-lite-latest", "gemini-flash-latest"),
         timeoutMs: 45000,
         supportsImages: true,
       });
