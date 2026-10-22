@@ -45,7 +45,7 @@ function toJpeg(video: HTMLVideoElement, maxWidth: number, quality: number): Pro
  * browser cannot play the codec (e.g. some HEVC .mov files): frames are a
  * bonus, the analysis works from the audio alone.
  */
-export async function captureFrames(file: File): Promise<CapturedFrames> {
+export async function captureFrames(file: File, knownDurationSeconds?: number): Promise<CapturedFrames> {
   const url = URL.createObjectURL(file);
   const video = document.createElement("video");
   video.muted = true;
@@ -59,12 +59,15 @@ export async function captureFrames(file: File): Promise<CapturedFrames> {
       video.addEventListener("error", () => reject(new Error("Cannot decode video")), { once: true });
       setTimeout(() => reject(new Error("Timed out loading video")), 15000);
     });
-    if (!video.videoWidth || !Number.isFinite(video.duration)) return { previews: [], aiFrames: [] };
+    // Browser-recorded WebM often reports Infinity; fall back to the duration
+    // Mediabunny measured from the container
+    const duration = Number.isFinite(video.duration) ? video.duration : knownDurationSeconds;
+    if (!video.videoWidth || !duration) return { previews: [], aiFrames: [] };
 
     const previews: string[] = [];
     const aiFrames: Blob[] = [];
     for (const position of POSITIONS) {
-      await seek(video, video.duration * position);
+      await seek(video, duration * position);
       const [preview, small] = await Promise.all([toJpeg(video, 1280, 0.85), toJpeg(video, 512, 0.7)]);
       if (preview) previews.push(URL.createObjectURL(preview));
       if (small) aiFrames.push(small);

@@ -100,7 +100,10 @@ export default function VideoStudioPage() {
       // 2. Extract audio + grab frames in the browser
       setStep(0);
       setProgress(0);
-      const [audio, captured] = await Promise.all([extractAudio(file, setProgress), captureFrames(file)]);
+      const [audio, captured] = await Promise.all([
+        extractAudio(file, setProgress),
+        captureFrames(file, durationSeconds),
+      ]);
       setFrames(captured.previews);
 
       // 3. Upload only the small audio + frames
