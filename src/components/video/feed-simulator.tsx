@@ -12,14 +12,17 @@ interface FeedSimulatorProps {
   frames: string[];
   durationSeconds: number;
   channelName: string;
+  /** A generated thumbnail to show instead of the raw frame */
+  coverOverride?: string | null;
 }
 
 /** Mock YouTube home-feed card and Shorts screen, to compare titles visually. */
-export function FeedSimulator({ pkg, frames, durationSeconds, channelName }: FeedSimulatorProps) {
+export function FeedSimulator({ pkg, frames, durationSeconds, channelName, coverOverride }: FeedSimulatorProps) {
   const { t } = useLanguage();
   const [titleIndex, setTitleIndex] = useState(0);
   const title = pkg.youtube.titles[titleIndex]?.text ?? "";
-  const cover = frames[1] ?? frames[0];
+  const frameCover = frames[1] ?? frames[0];
+  const cover = coverOverride ?? frameCover;
   const initial = channelName.trim().charAt(0).toUpperCase() || "C";
 
   return (
@@ -36,7 +39,7 @@ export function FeedSimulator({ pkg, frames, durationSeconds, channelName }: Fee
                 // eslint-disable-next-line @next/next/no-img-element -- local object URL from the user's own video
                 <img src={cover} alt="" className="size-full object-cover" />
               )}
-              {pkg.youtube.thumbnails[0] && (
+              {!coverOverride && pkg.youtube.thumbnails[0] && (
                 <span className="absolute bottom-3 start-3 max-w-[70%] rounded-md bg-black/70 px-2 py-1 text-lg leading-tight font-black text-white uppercase">
                   {pkg.youtube.thumbnails[0].headline}
                 </span>
@@ -81,9 +84,9 @@ export function FeedSimulator({ pkg, frames, durationSeconds, channelName }: Fee
 
         {/* Shorts / Reels phone screen */}
         <div className="relative mx-auto aspect-[9/16] w-full max-w-64 overflow-hidden rounded-[2rem] bg-black shadow-float" dir="auto">
-          {cover && (
+          {frameCover && (
             // eslint-disable-next-line @next/next/no-img-element -- local object URL from the user's own video
-            <img src={cover} alt="" className="absolute inset-0 size-full object-cover opacity-90" />
+            <img src={frameCover} alt="" className="absolute inset-0 size-full object-cover opacity-90" />
           )}
           <div className="absolute inset-x-4 top-1/3 text-center">
             <span className="rounded-md bg-black/60 px-2 py-1 text-base leading-snug font-extrabold text-white">

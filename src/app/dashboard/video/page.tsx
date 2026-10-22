@@ -12,6 +12,7 @@ import { extractAudio, probeVideo, VideoReadError } from "@/lib/video/extract-au
 import { captureFrames } from "@/lib/video/frames";
 import { useUpgrade } from "@/components/billing/upgrade-provider";
 import { FeedSimulator } from "@/components/video/feed-simulator";
+import { ThumbnailStudio } from "@/components/video/thumbnail-studio";
 import { VideoResults } from "@/components/video/video-results";
 import { CREDIT_COST, PLANS } from "@/types";
 import type { TranscriptSegment, VideoPackage } from "@/modules/ai/video-schemas";
@@ -61,6 +62,8 @@ export default function VideoStudioPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [frames, setFrames] = useState<string[]>([]);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [feedCover, setFeedCover] = useState<string | null>(null);
 
   const maxSeconds = PLANS[usage?.plan ?? "free"].maxVideoSeconds;
   const busy = step !== null && step < 4;
@@ -73,6 +76,8 @@ export default function VideoStudioPage() {
     setStep(null);
     setError(null);
     setFrames([]);
+    setVideoFile(null);
+    setFeedCover(null);
   };
 
   const handleFile = async (file: File) => {
@@ -127,6 +132,7 @@ export default function VideoStudioPage() {
         }
       }).finally(() => clearTimeout(analyzeTimer));
 
+      setVideoFile(file);
       setResult(response);
       setStep(4);
       refreshAfterSpend();
@@ -167,11 +173,20 @@ export default function VideoStudioPage() {
           )}
         </div>
         <VideoResults pkg={result.data} segments={result.segments} durationSeconds={result.durationSeconds} />
+        {videoFile && (
+          <ThumbnailStudio
+            file={videoFile}
+            durationSeconds={result.durationSeconds}
+            ideas={result.data.youtube.thumbnails}
+            onPreview={setFeedCover}
+          />
+        )}
         <FeedSimulator
           pkg={result.data}
           frames={frames}
           durationSeconds={result.durationSeconds}
           channelName={profile?.name ?? "Your channel"}
+          coverOverride={feedCover}
         />
       </div>
     );
