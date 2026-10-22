@@ -57,11 +57,12 @@ export default function AnalyticsPage() {
 
   const summary = useMemo(() => {
     const byPlatform: Record<SocialPlatform, number> = { youtube: 0, tiktok: 0, instagram: 0 };
-    const byKind: Record<UsageKind, number> = { generation: 0, repurpose: 0, assistant: 0 };
+    const byKind: Record<UsageKind, number> = { generation: 0, repurpose: 0, assistant: 0, video: 0 };
     let total = 0;
     for (const e of events) {
       total += e.credits_used;
-      byKind[e.kind] += e.kind === "repurpose" ? 1 : e.credits_used;
+      // Count actions, not credits: repurpose and video cost several credits each
+      byKind[e.kind] += e.kind === "repurpose" || e.kind === "video" ? 1 : e.credits_used;
       if (e.platform in byPlatform) byPlatform[e.platform as SocialPlatform] += 1;
       // A repurpose produces one piece for every platform
       if (e.kind === "repurpose") for (const p of Object.keys(byPlatform) as SocialPlatform[]) byPlatform[p] += 1;
@@ -176,6 +177,7 @@ export default function AnalyticsPage() {
               { key: "generation", label: t.app.kindGeneration, value: summary.byKind.generation },
               { key: "repurpose", label: t.app.kindRepurpose, value: summary.byKind.repurpose },
               { key: "assistant", label: t.app.kindAssistant, value: summary.byKind.assistant },
+              { key: "video", label: t.app.kindVideo, value: summary.byKind.video },
             ]}
           />
         </section>

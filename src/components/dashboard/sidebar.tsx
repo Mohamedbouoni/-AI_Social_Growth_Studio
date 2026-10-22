@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Wand2,
+  Clapperboard,
   FolderOpen,
   CalendarDays,
   BarChart3,
@@ -141,6 +142,12 @@ export function DashboardSidebar() {
       href: "/dashboard/studio",
       icon: Wand2,
       active: pathname.startsWith("/dashboard/studio"),
+    },
+    {
+      label: t.nav.video,
+      href: "/dashboard/video",
+      icon: Clapperboard,
+      active: pathname.startsWith("/dashboard/video"),
     },
     {
       label: t.nav.library,

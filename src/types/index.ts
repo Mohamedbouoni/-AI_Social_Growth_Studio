@@ -134,12 +134,14 @@ export interface Payment {
 // passes (Konnect has no recurring billing).
 
 export type PaidPlan = Exclude<Plan, "free">;
-export type UsageKind = "generation" | "repurpose" | "assistant";
+export type UsageKind = "generation" | "repurpose" | "assistant" | "video";
 
 export interface PlanConfig {
   credits: number;
   /** Price in millimes (1 TND = 1000 millimes); 0 for free. */
   priceMillimes: number;
+  /** Longest video the Video Studio accepts on this plan. */
+  maxVideoSeconds: number;
   features: {
     allTones: boolean;
     qualityModel: boolean;
@@ -154,16 +156,19 @@ export const PLANS: Record<Plan, PlanConfig> = {
   free: {
     credits: 10,
     priceMillimes: 0,
+    maxVideoSeconds: 300,
     features: { allTones: false, qualityModel: false, repurpose: false, exportLibrary: false },
   },
   creator: {
     credits: 150,
     priceMillimes: 19000,
+    maxVideoSeconds: 1800,
     features: { allTones: true, qualityModel: true, repurpose: true, exportLibrary: false },
   },
   growth: {
     credits: 600,
     priceMillimes: 49000,
+    maxVideoSeconds: 1800,
     features: { allTones: true, qualityModel: true, repurpose: true, exportLibrary: true },
   },
 };
@@ -176,6 +181,7 @@ export const CREDIT_COST: Record<UsageKind, number> = {
   generation: 1,
   repurpose: 3,
   assistant: 1,
+  video: 5,
 };
 
 export function isPaidPlan(plan: string): plan is PaidPlan {

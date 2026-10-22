@@ -6,10 +6,11 @@
 // OpenRouter, and OpenAI itself.
 // =============================================================================
 
+import type { ZodType } from "zod";
 import type { AIProvider, ChatMessage, ProviderResult, TokenUsage } from "../provider";
-import { EMPTY_USAGE } from "../provider";
+import { EMPTY_USAGE, textOnly } from "../provider";
 import type { GeneratedContent, GenerationInput } from "../schemas";
-import { parseGeneratedContent } from "../validate";
+import { extractJson, parseGeneratedContent } from "../validate";
 import { buildSystemPrompt, buildUserPrompt } from "../prompts/template";
 import { logger } from "@/lib/logging/logger";
 
@@ -21,6 +22,8 @@ export interface OpenAICompatibleConfig {
   timeoutMs?: number;
   /** Send response_format: json_object. Disable for models that reject it. */
   jsonMode?: boolean;
+  /** Whether the model accepts image content parts (otherwise images are dropped). */
+  supportsImages?: boolean;
   extraHeaders?: Record<string, string>;
 }
 
@@ -45,12 +48,25 @@ export class OpenAICompatibleProvider implements AIProvider {
     return Boolean(this.config.apiKey);
   }
 
-  async generateContent(input: GenerationInput): Promise<ProviderResult<GeneratedContent>> {
-    const messages: ChatMessage[] = [
-      { role: "system", content: buildSystemPrompt(input) },
-      { role: "user", content: buildUserPrompt(input) },
-    ];
+  generateContent(input: GenerationInput): Promise<ProviderResult<GeneratedContent>> {
+    return this.structured(
+      [
+        { role: "system", content: buildSystemPrompt(input) },
+        { role: "user", content: buildUserPrompt(input) },
+      ],
+      (text) => parseGeneratedContent(input, text)
+    );
+  }
 
+  generateStructured<T>(messages: ChatMessage[], schema: ZodType<T>): Promise<ProviderResult<T>> {
+    return this.structured(messages, (text) => schema.parse(extractJson(text)));
+  }
+
+  /** Completes in JSON mode and parses, retrying once on malformed or off-schema output. */
+  private async structured<T>(
+    messages: ChatMessage[],
+    parse: (text: string) => T
+  ): Promise<ProviderResult<T>> {
     const usage: TokenUsage = { ...EMPTY_USAGE };
     let lastError: unknown;
 
@@ -60,7 +76,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       usage.completionCount += completion.usage.completionCount;
 
       try {
-        const data = parseGeneratedContent(input, completion.text);
+        const data = parse(completion.text);
         return { data, usage, providerName: this.name };
       } catch (err) {
         lastError = err;
@@ -97,7 +113,10 @@ export class OpenAICompatibleProvider implements AIProvider {
       },
       body: JSON.stringify({
         model: this.config.model,
-        messages,
+        // Text-only models reject image parts, so flatten them to plain text
+        messages: this.config.supportsImages
+          ? messages
+          : messages.map((m) => ({ ...m, content: textOnly(m.content) })),
         temperature: 0.7,
         ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
       }),

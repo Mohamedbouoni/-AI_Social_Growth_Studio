@@ -6,7 +6,8 @@
 // expected. Try each configured provider in order until one succeeds.
 // =============================================================================
 
-import type { AIProvider, ChatMessage, ProviderResult } from "../provider";
+import type { ZodType } from "zod";
+import type { AIProvider, ChatMessage, ProviderResult, StructuredOptions } from "../provider";
 import type { GeneratedContent, GenerationInput } from "../schemas";
 import { logger } from "@/lib/logging/logger";
 
@@ -28,6 +29,14 @@ export class FallbackProvider implements AIProvider {
 
   chat(messages: ChatMessage[]): Promise<ProviderResult<string>> {
     return this.tryEach((provider) => provider.chat(messages));
+  }
+
+  generateStructured<T>(
+    messages: ChatMessage[],
+    schema: ZodType<T>,
+    options?: StructuredOptions<T>
+  ): Promise<ProviderResult<T>> {
+    return this.tryEach((provider) => provider.generateStructured(messages, schema, options));
   }
 
   private async tryEach<T>(

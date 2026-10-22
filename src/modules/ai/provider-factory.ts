@@ -21,7 +21,10 @@ export type ModelTier = "fast" | "quality";
 
 export interface ProviderOptions {
   tier: ModelTier;
-  language: Language;
+  /** "auto" when the language is unknown (e.g. before analyzing a video). */
+  language: Language | "auto";
+  /** Prefer providers that can see images (video frames). */
+  needsImages?: boolean;
 }
 
 export class AIConfigurationError extends Error {
@@ -63,6 +66,7 @@ function buildProvider(key: ProviderKey, tier: ModelTier): AIProvider | null {
         apiKey,
         model: pickModel(tier, "GEMINI_MODEL_FAST", "GEMINI_MODEL_QUALITY", "gemini-2.5-flash-lite", "gemini-2.5-flash"),
         timeoutMs: 45000,
+        supportsImages: true,
       });
     }
     case "openrouter": {
@@ -90,6 +94,7 @@ function buildProvider(key: ProviderKey, tier: ModelTier): AIProvider | null {
         baseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
         apiKey,
         model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        supportsImages: true,
       });
     }
   }
@@ -102,8 +107,10 @@ export function getAIProvider(options: ProviderOptions): AIProvider {
   }
 
   // Gemini first for Arabic (noticeably better output), Groq first otherwise (fastest)
+  // Gemini first for Arabic and for images (it sees frames, Groq Llama does not),
+  // Groq first otherwise (fastest)
   const order: ProviderKey[] =
-    options.language === "ar"
+    options.language === "ar" || options.needsImages
       ? ["gemini", "groq", "openrouter", "openai"]
       : ["groq", "gemini", "openrouter", "openai"];
 

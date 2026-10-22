@@ -5,8 +5,9 @@
 // configured. Never used in production (see provider-factory.ts).
 // =============================================================================
 
-import type { AIProvider, ChatMessage, ProviderResult } from "../provider";
-import { EMPTY_USAGE } from "../provider";
+import type { ZodType } from "zod";
+import type { AIProvider, ChatMessage, ProviderResult, StructuredOptions } from "../provider";
+import { EMPTY_USAGE, textOnly } from "../provider";
 import type { GeneratedContent, GenerationInput } from "../schemas";
 
 export class MockDevProvider implements AIProvider {
@@ -150,9 +151,21 @@ export class MockDevProvider implements AIProvider {
     return { data: this.build(input), usage: EMPTY_USAGE, providerName: this.name };
   }
 
+  async generateStructured<T>(
+    _messages: ChatMessage[],
+    schema: ZodType<T>,
+    options?: StructuredOptions<T>
+  ): Promise<ProviderResult<T>> {
+    if (!options?.mock) {
+      throw new Error("Mock provider has no sample data for this request.");
+    }
+    // Validate the sample too, so a stale mock fails loudly in development
+    return { data: schema.parse(options.mock()), usage: EMPTY_USAGE, providerName: this.name };
+  }
+
   async chat(messages: ChatMessage[]): Promise<ProviderResult<string>> {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    const isArabic = /[\u0600-\u06FF]/.test(lastUser?.content ?? "");
+    const isArabic = /[\u0600-\u06FF]/.test(textOnly(lastUser?.content ?? ""));
     const data = isArabic
       ? "(وضع التطوير) هذا رد تجريبي من مدرب النمو. أضف مفتاح GROQ_API_KEY أو GEMINI_API_KEY للحصول على إجابات حقيقية."
       : "(Dev mode) This is a sample Growth Coach reply. Add GROQ_API_KEY or GEMINI_API_KEY to get real answers.";

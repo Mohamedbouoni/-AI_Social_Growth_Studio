@@ -6,6 +6,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GeneratedContent } from "@/modules/ai/schemas";
+import type { TranscriptSegment, VideoPackage } from "@/modules/ai/video-schemas";
+
+export type StoredVideoPackage = VideoPackage & { kind: "video_package"; segments: TranscriptSegment[] };
+
+export function isVideoPackage(value: unknown): value is StoredVideoPackage {
+  return typeof value === "object" && value !== null && (value as { kind?: string }).kind === "video_package";
+}
 import type { Plan, PlanConfig, ProjectStatus, SocialPlatform, UsageKind } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 import { apiFetch } from "./client";
@@ -27,7 +34,8 @@ export interface LibraryVariant {
   id: string;
   platform: SocialPlatform;
   content_type: string;
-  output_json: GeneratedContent;
+  /** Platform content, or the whole Video Studio package for content_type "package" */
+  output_json: GeneratedContent | StoredVideoPackage;
   version: number;
   created_at: string;
 }
@@ -41,6 +49,8 @@ export interface LibraryItem {
   tone: string;
   status: ProjectStatus;
   planned_date: string | null;
+  source: "idea" | "video";
+  duration_seconds: number | null;
   created_at: string;
   updated_at: string;
   content_variants: LibraryVariant[];

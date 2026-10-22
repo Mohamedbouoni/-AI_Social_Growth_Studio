@@ -20,6 +20,7 @@ import type { IconComponent } from "./stat-tile";
 // Anything else under /dashboard falls back to the overview title.
 const PAGE_TITLES: { prefix: string; title: string; subtitle: string }[] = [
   { prefix: "/dashboard/studio", title: "studioTitle", subtitle: "studioSubtitle" },
+  { prefix: "/dashboard/video", title: "videoTitle", subtitle: "videoSubtitle" },
   { prefix: "/dashboard/library", title: "libraryTitle", subtitle: "librarySubtitle" },
   { prefix: "/dashboard/calendar", title: "calendarTitle", subtitle: "calendarSubtitle" },
   { prefix: "/dashboard/analytics", title: "analyticsTitle", subtitle: "analyticsSubtitle" },

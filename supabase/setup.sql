@@ -2,8 +2,8 @@
 -- AI Social Growth Studio — one-time database setup
 -- =============================================================================
 -- Paste this whole file into Supabase Dashboard -> SQL Editor -> New query,
--- then click Run. Run it ONCE on an empty project. It is the four files in
--- supabase/migrations/ (001-004) combined in order; if you use the
+-- then click Run. Run it ONCE on an empty project. It is the files in
+-- supabase/migrations/ (001-005) combined in order; if you use the
 -- Supabase CLI, run `supabase db push` instead of this file.
 -- Generated from the migrations — edit those, not this file.
 -- =============================================================================
@@ -658,4 +658,37 @@ INSERT INTO workspace_members (workspace_id, user_id, role)
 SELECT id, owner_id, 'owner' FROM created;
 
 -- Make the Supabase API (PostgREST) see the new tables immediately
+NOTIFY pgrst, 'reload schema';
+
+-- >>>>>>>>>> 005_video_analysis.sql
+
+-- =============================================================================
+-- 005 — Video Studio: video analyses in the credit ledger and the library
+-- =============================================================================
+
+-- Allow the 'video' usage kind (5 credits per analyzed video)
+ALTER TABLE generation_usage DROP CONSTRAINT IF EXISTS generation_usage_kind_check;
+ALTER TABLE generation_usage
+    ADD CONSTRAINT generation_usage_kind_check
+    CHECK (kind IN ('generation', 'repurpose', 'assistant', 'video'));
+
+-- Library items can come from a typed idea or an uploaded video
+ALTER TABLE content_projects
+    ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'idea'
+    CHECK (source IN ('idea', 'video'));
+ALTER TABLE content_projects ADD COLUMN IF NOT EXISTS duration_seconds INT;
+ALTER TABLE content_projects ADD COLUMN IF NOT EXISTS transcript TEXT;
+
+-- Detected language may be any ISO code for videos, not only en/ar
+ALTER TABLE content_projects DROP CONSTRAINT IF EXISTS content_projects_language_check;
+ALTER TABLE content_projects
+    ADD CONSTRAINT content_projects_language_check
+    CHECK (char_length(language) BETWEEN 2 AND 12);
+
+-- The full omnichannel package is stored as one 'package' variant
+ALTER TABLE content_variants DROP CONSTRAINT IF EXISTS content_variants_content_type_check;
+ALTER TABLE content_variants
+    ADD CONSTRAINT content_variants_content_type_check
+    CHECK (content_type IN ('video', 'short', 'reel', 'carousel', 'post', 'story', 'package'));
+
 NOTIFY pgrst, 'reload schema';

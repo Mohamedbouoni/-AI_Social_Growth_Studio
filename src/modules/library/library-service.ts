@@ -28,6 +28,58 @@ export function deriveTitle(content: GeneratedContent, fallback: string): string
   return text.length > MAX_TITLE_LENGTH ? `${text.slice(0, MAX_TITLE_LENGTH - 1)}…` : text;
 }
 
+/** Saves an analyzed video: transcript + the whole package as one 'package' variant. */
+export async function saveVideoToLibrary(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  video: {
+    title: string;
+    niche: string;
+    language: string;
+    tone: string;
+    transcript: string;
+    durationSeconds: number;
+    output: unknown;
+  }
+): Promise<string | null> {
+  const title = video.title.trim() || "Untitled video";
+  const { data: project, error: projectError } = await supabase
+    .from("content_projects")
+    .insert({
+      workspace_id: workspaceId,
+      title: title.length > MAX_TITLE_LENGTH ? `${title.slice(0, MAX_TITLE_LENGTH - 1)}…` : title,
+      niche: video.niche,
+      language: video.language.slice(0, 12),
+      source_idea: "",
+      tone: video.tone,
+      status: "draft",
+      source: "video",
+      duration_seconds: Math.round(video.durationSeconds),
+      transcript: video.transcript,
+    })
+    .select("id")
+    .single();
+
+  if (projectError || !project) {
+    logger.error("Failed to save video project", { error: projectError?.message });
+    return null;
+  }
+
+  const { error: variantError } = await supabase.from("content_variants").insert({
+    project_id: project.id,
+    platform: "youtube",
+    content_type: "package",
+    output_json: video.output,
+  });
+
+  if (variantError) {
+    logger.error("Failed to save video package", { error: variantError.message });
+    await supabase.from("content_projects").delete().eq("id", project.id);
+    return null;
+  }
+  return project.id;
+}
+
 /**
  * Saves one idea with one or more platform variants. Returns the project id,
  * or null if saving failed — the user still gets their content, so a library

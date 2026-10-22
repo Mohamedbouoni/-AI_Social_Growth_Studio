@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     let query = supabase
       .from("content_projects")
       .select(
-        `id, title, niche, language, source_idea, tone, status, planned_date, created_at, updated_at,
+        `id, title, niche, language, source_idea, tone, status, planned_date, source, duration_seconds, created_at, updated_at,
          ${variantJoin}(id, platform, content_type, output_json, version, created_at)`
       )
       .order("created_at", { ascending: false })

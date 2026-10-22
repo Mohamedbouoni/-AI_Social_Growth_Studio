@@ -2,9 +2,11 @@
 // Local Ollama AI Provider
 // =============================================================================
 
+import type { ZodType } from "zod";
 import type { AIProvider, ChatMessage, ProviderResult } from "../provider";
+import { textOnly } from "../provider";
 import type { GeneratedContent, GenerationInput } from "../schemas";
-import { parseGeneratedContent } from "../validate";
+import { extractJson, parseGeneratedContent } from "../validate";
 import { buildSystemPrompt, buildUserPrompt } from "../prompts/template";
 import { logger } from "@/lib/logging/logger";
 
@@ -59,6 +61,11 @@ export class OllamaProvider implements AIProvider {
     return this.request(messages, false);
   }
 
+  async generateStructured<T>(messages: ChatMessage[], schema: ZodType<T>): Promise<ProviderResult<T>> {
+    const result = await this.request(messages, true);
+    return { ...result, data: schema.parse(extractJson(result.data)) };
+  }
+
   private async request(
     messages: ChatMessage[],
     jsonMode: boolean
@@ -68,7 +75,7 @@ export class OllamaProvider implements AIProvider {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: this.model,
-        messages,
+        messages: messages.map((m) => ({ ...m, content: textOnly(m.content) })),
         stream: false,
         ...(jsonMode ? { format: "json" } : {}),
         options: { temperature: 0.7, top_p: 0.9 },

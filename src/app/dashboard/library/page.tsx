@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { Check, Copy, Download, Eye, Lock, Search, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Clapperboard, Copy, Download, Eye, Lock, Search, Sparkles, Trash2, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n/provider";
 import { fmt, formatDate } from "@/lib/i18n/format";
 import {
@@ -11,6 +11,7 @@ import {
   useLibrary,
   useUpdateProject,
   useUsage,
+  isVideoPackage,
   type LibraryItem,
 } from "@/lib/queries/hooks";
 import {
@@ -27,6 +28,7 @@ import { RingGauge } from "@/components/dashboard/ring-gauge";
 import { useCoach } from "@/components/dashboard/coach-drawer";
 import { useUpgrade } from "@/components/billing/upgrade-provider";
 import { ContentPreview, contentToText } from "@/components/library/content-preview";
+import { VideoResults } from "@/components/video/video-results";
 import { cn } from "@/lib/utils";
 import type { ProjectStatus, SocialPlatform } from "@/types";
 
@@ -176,6 +178,12 @@ export default function LibraryPage() {
                       </span>
                     ))}
                   </span>
+                  {item.source === "video" && (
+                    <span className="absolute top-3 start-3 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground">
+                      <Clapperboard className="size-3" />
+                      {t.app.videoBadge}
+                    </span>
+                  )}
                   <span className={cn("absolute top-3 end-3 rounded-full px-2.5 py-1 text-[11px] font-semibold", STATUS_STYLE[item.status])}>
                     {statusLabel(item.status, t)}
                   </span>
@@ -262,7 +270,12 @@ function ContentViewer({ item, onClose }: { item: LibraryItem | null; onClose: (
 
   const copy = async () => {
     if (!variant) return;
-    await navigator.clipboard.writeText(contentToText(variant.output_json, t.app));
+    const output = variant.output_json;
+    // A video package has its own copy buttons per block; here copy its titles + description
+    const text = isVideoPackage(output)
+      ? [...output.youtube.titles.map((x) => x.text), "", output.youtube.description].join("\n")
+      : contentToText(output, t.app);
+    await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -310,7 +323,16 @@ function ContentViewer({ item, onClose }: { item: LibraryItem | null; onClose: (
                   />
                 </div>
               )}
-              <div className="overflow-y-auto px-5 pb-5">{variant && <ContentPreview content={variant.output_json} labels={t.app} />}</div>
+              <div className="overflow-y-auto px-5 pb-5">{variant &&
+                  (isVideoPackage(variant.output_json) ? (
+                    <VideoResults
+                      pkg={variant.output_json}
+                      segments={variant.output_json.segments ?? []}
+                      durationSeconds={item.duration_seconds ?? 0}
+                    />
+                  ) : (
+                    <ContentPreview content={variant.output_json} labels={t.app} />
+                  ))}</div>
             </>
           )}
         </DialogPrimitive.Popup>
