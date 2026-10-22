@@ -17,7 +17,15 @@ import {
   Output,
   WavOutputFormat,
   canEncodeAudio,
+  Logging,
+  LogLevel,
 } from "mediabunny";
+
+// Mediabunny logs recoverable parsing issues with console.error, e.g.
+// "Error parsing HEVC SPS" for iPhone H.265 videos, then carries on. We only
+// need the audio track, and real failures still throw, so keep it quiet:
+// Next.js dev shows every console.error as a scary error overlay.
+Logging.level = LogLevel.Silent;
 
 export interface AudioPart {
   blob: Blob;
