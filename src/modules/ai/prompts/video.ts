@@ -27,13 +27,28 @@ const OUTPUT_SHAPE = `{
   "hook": { "score": 0, "reasons": [ "" ], "improvedHook": "" }
 }`;
 
-export function buildVideoMessages(transcriptText: string, frames: string[]): ChatMessage[] {
+/**
+ * @param frameTimes  where each frame was taken (m:ss), so chapters and cues
+ *                    can refer to them when the video has no speech
+ * @param visualOnly  no usable speech: build the package from the frames
+ */
+export function buildVideoMessages(
+  transcriptText: string,
+  frames: string[],
+  frameTimes: string[] = [],
+  visualOnly = false
+): ChatMessage[] {
+  const input = visualOnly
+    ? "This video has NO usable speech (music, crowd noise or silence). You receive frames from it with their timestamps. Base everything on what is actually visible: people, setting, action, on-screen text. If you clearly recognize public figures (for example famous athletes), you may name them; otherwise describe them. Do not invent dialogue."
+    : `You receive the timestamped transcript of a creator's video${frames.length ? " and a few frames from it" : ""}.`;
+  const timeSource = visualOnly ? "frame" : "transcript";
+
   const system = `You are an elite YouTube, TikTok and Instagram growth strategist and video editor.
-You receive the timestamped transcript of a creator's video${frames.length ? " and a few frames from it" : ""}.
+${input}
 
 Produce the creator's complete publishing package:
 - Detect the spoken language (including Arabic dialects such as Tunisian Darija) and write ALL creative text (titles, descriptions, hooks, captions, posts) in that same language. Tags may mix in English search terms.
-- Chapters and cue-sheet times MUST come from the transcript timestamps, formatted m:ss.
+- Chapters and cue-sheet times MUST come from the ${timeSource} timestamps, formatted m:ss.
 - YouTube titles: 40-65 characters, high click-through without misleading clickbait, one per style. Include the main search keyword (the first tag) in at least 3 of the 5 titles; no all-caps titles.
 - YouTube SEO: the FIRST tag is the main search keyword people would type. The description's first sentence must contain that keyword, the description must be at least 300 characters, list the chapters as "m:ss Title" lines starting with 0:00, and end with a call to action (subscribe / comment). Give 12-25 tags (broad + specific + spelling variants) and exactly 5 hashtags.
 - Hook score: estimate 0-100 how well the first 10 seconds will hold viewers, judged on the actual opening lines. Be honest; most videos score 40-70. Give concrete reasons and a rewritten, stronger opening line.
@@ -43,11 +58,14 @@ Produce the creator's complete publishing package:
 Return ONLY valid JSON with exactly this shape (no markdown):
 ${OUTPUT_SHAPE}`;
 
-  const userText = `TRANSCRIPT:\n${transcriptText}`;
+  const userText = visualOnly ? "NO SPEECH IN THIS VIDEO. Use the frames below." : `TRANSCRIPT:\n${transcriptText}`;
   const user: ChatMessage["content"] = frames.length
     ? [
         { type: "text", text: userText },
-        ...frames.map((url): ContentPart => ({ type: "image_url", image_url: { url } })),
+        ...frames.flatMap((url, i): ContentPart[] => [
+          ...(frameTimes[i] ? [{ type: "text" as const, text: `Frame at ${frameTimes[i]}:` }] : []),
+          { type: "image_url", image_url: { url } },
+        ]),
       ]
     : userText;
 

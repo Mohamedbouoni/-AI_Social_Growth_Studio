@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GeneratedContent } from "@/modules/ai/schemas";
 import type { TranscriptSegment, VideoPackage } from "@/modules/ai/video-schemas";
 
-export type StoredVideoPackage = VideoPackage & { kind: "video_package"; segments: TranscriptSegment[] };
+export type StoredVideoPackage = VideoPackage & { kind: "video_package"; segments: TranscriptSegment[]; isSample?: boolean };
 
 export function isVideoPackage(value: unknown): value is StoredVideoPackage {
   return typeof value === "object" && value !== null && (value as { kind?: string }).kind === "video_package";

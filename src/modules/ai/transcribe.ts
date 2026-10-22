@@ -152,7 +152,7 @@ function sampleTranscript(durationSeconds: number): Transcript {
   ];
   const step = Math.max(5, durationSeconds / lines.length);
   const segments = lines.map((text, i) => ({ start: i * step, end: (i + 1) * step, text }));
-  return { text: lines.join(" "), segments, language: "en", durationSeconds };
+  return { text: lines.join(" "), segments, language: "en", durationSeconds, sample: true };
 }
 
 export async function transcribe(chunks: AudioChunk[], claimedDurationSeconds: number): Promise<Transcript> {

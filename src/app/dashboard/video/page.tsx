@@ -24,6 +24,7 @@ interface AnalysisResult {
   segments: TranscriptSegment[];
   durationSeconds: number;
   projectId: string | null;
+  isSample?: boolean;
 }
 
 // Server work has no progress events; switch the label once transcription
@@ -172,7 +173,7 @@ export default function VideoStudioPage() {
             </Link>
           )}
         </div>
-        <VideoResults pkg={result.data} segments={result.segments} durationSeconds={result.durationSeconds} />
+        <VideoResults pkg={result.data} segments={result.segments} durationSeconds={result.durationSeconds} isSample={result.isSample} />
         {videoFile && (
           <ThumbnailStudio
             file={videoFile}

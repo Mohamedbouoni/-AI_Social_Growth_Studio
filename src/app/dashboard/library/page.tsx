@@ -29,6 +29,9 @@ import { useCoach } from "@/components/dashboard/coach-drawer";
 import { useUpgrade } from "@/components/billing/upgrade-provider";
 import { ContentPreview, contentToText } from "@/components/library/content-preview";
 import { VideoResults } from "@/components/video/video-results";
+import { sampleVideoPackage } from "@/modules/ai/prompts/video";
+
+const SAMPLE_TITLE = sampleVideoPackage().youtube.titles[0]?.text;
 import { cn } from "@/lib/utils";
 import type { ProjectStatus, SocialPlatform } from "@/types";
 
@@ -329,6 +332,11 @@ function ContentViewer({ item, onClose }: { item: LibraryItem | null; onClose: (
                       pkg={variant.output_json}
                       segments={variant.output_json.segments ?? []}
                       durationSeconds={item.duration_seconds ?? 0}
+                      // Items saved before the flag existed: recognize the sample by its title
+                      isSample={
+                        variant.output_json.isSample ??
+                        variant.output_json.youtube.titles[0]?.text === SAMPLE_TITLE
+                      }
                     />
                   ) : (
                     <ContentPreview content={variant.output_json} labels={t.app} />

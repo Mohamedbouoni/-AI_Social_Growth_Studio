@@ -15,6 +15,8 @@ import { saveVideoToLibrary } from "@/modules/library/library-service";
 import { getAIProvider } from "./provider-factory";
 import { buildVideoMessages, sampleVideoPackage } from "./prompts/video";
 import { formatTranscript, transcribe, type AudioChunk } from "./transcribe";
+import { formatTime } from "@/lib/video/format";
+import { CREDIT_COST } from "@/types";
 import { videoPackageSchema, type Transcript, type VideoPackage } from "./video-schemas";
 
 // Tolerance between the browser's duration and Whisper's (encoder padding)
@@ -33,6 +35,8 @@ export interface AnalyzeVideoResult {
   data: VideoPackage;
   transcript: Transcript;
   projectId: string | null;
+  /** True when the built-in sample was used (no AI key configured) */
+  isSample: boolean;
   creditsRemaining: number;
 }
 
@@ -68,13 +72,21 @@ export async function analyzeVideoService(
 
     // The browser's duration can be faked; Whisper's measurement cannot
     if (transcript.durationSeconds > limit + DURATION_TOLERANCE_SECONDS) throw tooLong(limit);
-    if (transcript.text.trim().length < MIN_TRANSCRIPT_CHARS) {
+    // No speech (music, crowd noise): fall back to the frames, which only
+    // vision models (Gemini, OpenAI) can see; Groq Llama would invent content
+    const visualOnly = transcript.text.trim().length < MIN_TRANSCRIPT_CHARS;
+    const visionAvailable = Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY);
+    if (visualOnly && (input.frames.length === 0 || !visionAvailable)) {
       throw new AppError(
         "INVALID_REQUEST",
-        "We couldn't find speech in this video. Video Studio works with videos where someone talks.",
+        input.frames.length === 0
+          ? "We couldn't find speech in this video, and couldn't read its images either. Try exporting it as MP4."
+          : "This video has no speech. Add a free GEMINI_API_KEY so Video Studio can analyze it from its images.",
         400
       );
     }
+    const totalSeconds = transcript.durationSeconds || input.durationSeconds;
+    const frameTimes = [0.1, 0.5, 0.85].map((p) => formatTime(p * totalSeconds));
 
     const provider = getAIProvider({
       tier: entitlement.config.features.qualityModel ? "quality" : "fast",
@@ -83,7 +95,7 @@ export async function analyzeVideoService(
     });
 
     const result = await provider.generateStructured(
-      buildVideoMessages(formatTranscript(transcript), input.frames),
+      buildVideoMessages(formatTranscript(transcript), input.frames, frameTimes, visualOnly),
       videoPackageSchema,
       { mock: sampleVideoPackage }
     );
@@ -91,6 +103,8 @@ export async function analyzeVideoService(
     await recordUsageDetails(supabase, entitlement.workspaceId, requestId, result.providerName, result.usage);
 
     const pkg = result.data;
+    // Built-in dev sample (no AI key): clearly flagged and never charged
+    const isSample = transcript.sample === true || result.providerName === "mock-dev";
     const projectId = await saveVideoToLibrary(supabase, entitlement.workspaceId, {
       title: pkg.youtube.titles[0]?.text ?? pkg.core.takeaway,
       niche: pkg.detected.niche,
@@ -98,14 +112,17 @@ export async function analyzeVideoService(
       tone: pkg.detected.tone,
       transcript: transcript.text,
       durationSeconds: transcript.durationSeconds || input.durationSeconds,
-      output: { kind: "video_package", ...pkg, segments: transcript.segments },
+      output: { kind: "video_package", ...pkg, segments: transcript.segments, isSample },
     });
+
+    if (isSample) await releaseCredits(supabase, entitlement.workspaceId, requestId);
 
     return {
       data: pkg,
       transcript,
       projectId,
-      creditsRemaining: Math.max(0, entitlement.config.credits - used),
+      isSample,
+      creditsRemaining: Math.max(0, entitlement.config.credits - (isSample ? used - CREDIT_COST.video : used)),
     };
   } catch (err) {
     await releaseCredits(supabase, entitlement.workspaceId, requestId);

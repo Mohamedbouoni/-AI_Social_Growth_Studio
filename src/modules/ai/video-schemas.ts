@@ -79,4 +79,6 @@ export interface Transcript {
   /** ISO 639-1 code when the transcriber reports one */
   language: string | null;
   durationSeconds: number;
+  /** True when this is the built-in dev sample, not the real audio */
+  sample?: boolean;
 }

@@ -75,6 +75,7 @@ export async function POST(request: Request) {
       language: result.transcript.language,
       durationSeconds: result.transcript.durationSeconds,
       projectId: result.projectId,
+      isSample: result.isSample,
       creditsRemaining: result.creditsRemaining,
     });
   } catch (err: unknown) {

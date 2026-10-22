@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/lib/i18n/provider";
 import { formatTime } from "@/lib/video/format";
@@ -55,9 +56,11 @@ interface VideoResultsProps {
   pkg: VideoPackage;
   segments: TranscriptSegment[];
   durationSeconds: number;
+  /** Built-in dev sample: show a warning so it is never mistaken for a real analysis */
+  isSample?: boolean;
 }
 
-export function VideoResults({ pkg, segments, durationSeconds }: VideoResultsProps) {
+export function VideoResults({ pkg, segments, durationSeconds, isSample }: VideoResultsProps) {
   const { t } = useLanguage();
   const [tab, setTab] = useState<Tab>("youtube");
   const { detected, youtube, short, social } = pkg;
@@ -65,6 +68,16 @@ export function VideoResults({ pkg, segments, durationSeconds }: VideoResultsPro
 
   return (
     <div className="space-y-6">
+      {isSample && (
+        <div role="alert" className="flex items-start gap-3 rounded-xl border-2 border-negative bg-negative-soft p-4 text-negative">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-bold">{t.app.sampleTitle}</p>
+            <p className="text-sm">{t.app.sampleBody}</p>
+          </div>
+        </div>
+      )}
+
       {/* Summary header */}
       <section className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-4 rounded-xl bg-card p-5 shadow-card sm:p-6">
